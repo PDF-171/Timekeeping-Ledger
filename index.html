@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>Timekeeping Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{
+  --paper:#F7F3EA;
+  --paper-alt:#EFEAE0;
+  --card:#FFFDF8;
+  --ink:#1B1E23;
+  --ink-soft:#5B5A52;
+  --green:#2D5F4C;
+  --green-dark:#1F4335;
+  --green-tint:#E4EDE8;
+  --rust:#B5482F;
+  --rust-tint:#F6E5DE;
+  --gold:#C9A84A;
+  --gold-tint:#F7EFD9;
+  --line:#D9D4C7;
+  --line-strong:#C3BCA9;
+  --shadow: 0 2px 10px rgba(27,30,35,0.07);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Inter',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:60px;
+}
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 100% 34px;
+  opacity:0.35;
+  pointer-events:none;
+  z-index:0;
+}
+.wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px;position:relative;z-index:1;}
+
+/* HEADER */
+header.top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;gap:10px;}
+header.top .title-block h1{
+  font-family:'Special Elite',cursive;
+  font-size:26px;
+  margin:0 0 2px;
+  letter-spacing:0.5px;
+  color:var(--ink);
+}
+header.top .title-block p{margin:0;font-size:12.5px;color:var(--ink-soft);}
+.gear-btn{
+  background:var(--card);border:1px solid var(--line-strong);border-radius:10px;
+  width:42px;height:42px;flex:none;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;box-shadow:var(--shadow); font-size:18px;
+}
+.gear-btn:active{transform:translateY(1px);}
+
+.account-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--green-tint);border:1px solid var(--green);border-radius:10px;
+  padding:8px 12px;margin-bottom:16px;font-size:12.5px;color:var(--green-dark);
+}
+.account-bar span.who{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.account-bar button{
+  background:none;border:none;color:var(--rust);font-weight:600;cursor:pointer;font-size:12px;
+  flex:none;margin-left:8px;
+}
+
+/* CARD */
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:16px;
+  margin-bottom:16px;
+  box-shadow:var(--shadow);
+  position:relative;
+}
+.card h2{
+  font-family:'Special Elite',cursive;
+  font-size:15px;
+  margin:0 0 12px;
+  text-transform:uppercase;
+  letter-spacing:1px;
+  color:var(--green-dark);
+  display:flex;align-items:center;gap:8px;
+}
+.card h2 .tag{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;background:var(--green-tint);color:var(--green-dark);
+  padding:2px 6px;border-radius:5px;letter-spacing:0.5px;
+}
+
+/* CALENDAR */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cal-nav button{
+  background:var(--paper-alt);border:1px solid var(--line-strong);border-radius:8px;
+  width:36px;height:36px;font-size:16px;cursor:pointer;color:var(--green-dark);
+}
+.cal-nav .month-label{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;}
+.weekday-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+.weekday-row div{
+  text-align:center;font-size:10.5px;color:var(--ink-soft);font-weight:600;
+  padding:2px 0;
+}
+.weekday-row div.sun{color:var(--rust);}
+.day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.day-cell{
+  position:relative;
+  aspect-ratio:1/1;
+  border:1px dashed var(--line-strong);
+  border-radius:8px;
+  background:var(--paper-alt);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:12.5px;
+  color:var(--ink);
+  transition:transform 0.1s ease;
+}
+.day-cell:active{transform:scale(0.94);}
+.day-cell.empty{visibility:hidden;cursor:default;}
+.day-cell.sunday{background:var(--rust-tint);}
+.day-cell .dnum{font-weight:600;}
+.day-cell .dot{
+  width:5px;height:5px;border-radius:50%;position:absolute;bottom:5px;
+}
+.day-cell.st-present{border-style:solid;border-color:var(--green);}
+.day-cell.st-present .dot{background:var(--green);}
+.day-cell.st-absent{border-style:solid;border-color:var(--rust);}
+.day-cell.st-absent .dot{background:var(--rust);}
+.day-cell.st-half .dot{background:var(--gold);}
+.day-cell.st-half{border-style:solid;border-color:var(--gold);}
+.day-cell.holiday::after{
+  content:"★"; position:absolute; top:2px; right:3px; font-size:8px; color:var(--gold);
+}
+.day-cell.today{box-shadow:inset 0 0 0 2px var(--ink);}
+.day-cell.in-period{background:var(--gold-tint);}
+
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:11px;color:var(--ink-soft);}
+.legend span{display:inline-flex;align-items:center;gap:4px;}
+.legend i{width:8px;height:8px;border-radius:50%;display:inline-block;}
+
+/* PERIOD FORM */
+.row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+.field{flex:1;min-width:120px;}
+.field label{display:block;font-size:11px;color:var(--ink-soft);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;}
+input[type=date],input[type=time],input[type=number],input[type=text],select,textarea{
+  width:100%;padding:10px;border:1px solid var(--line-strong);border-radius:8px;
+  background:var(--paper);font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);
+}
+textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
+.btn{
+  border:none;border-radius:9px;padding:11px 16px;font-weight:600;font-size:13.5px;
+  cursor:pointer;font-family:'Inter',sans-serif;letter-spacing:0.2px;
+}
+.btn-primary{background:var(--green);color:#fff;}
+.btn-primary:active{background:var(--green-dark);}
+.btn-primary:disabled{opacity:0.5;}
+.btn-outline{background:transparent;border:1px solid var(--line-strong);color:var(--ink);}
+.btn-danger{background:var(--rust-tint);color:var(--rust);}
+.btn-block{width:100%;}
+
+/* SUMMARY TABLE */
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.stat{background:var(--paper-alt);border:1px solid var(--line);border-radius:8px;padding:9px 10px;}
+.stat .k{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:0.4px;}
+.stat .v{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:15px;margin-top:2px;}
+.divider{border:none;border-top:1px dashed var(--line-strong);margin:14px 0;}
+
+.line-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13.5px;border-bottom:1px solid var(--line);}
+.line-item:last-child{border-bottom:none;}
+.line-item .amt{font-family:'IBM Plex Mono',monospace;font-weight:600;}
+
+.ded-item{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.ded-item input[type=text]{flex:1.3;}
+.ded-item input[type=number]{flex:1;}
+.ded-item select{flex:0.9;}
+.ded-item button{
+  background:var(--rust-tint);color:var(--rust);border:none;border-radius:8px;
+  width:34px;height:38px;flex:none;font-size:15px;cursor:pointer;
+}
+
+.net-box{
+  background:var(--green);color:#fff;border-radius:10px;padding:14px 16px;
+  display:flex;justify-content:space-between;align-items:center;margin-top:10px;
+}
+.net-box .k{font-family:'Special Elite',cursive;font-size:13px;letter-spacing:0.5px;}
+.net-box .v{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:20px;}
+
+.history-item{
+  border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:8px;
+  background:var(--paper-alt);
+}
+.history-item .top-row{display:flex;justify-content:space-between;align-items:center;}
+.history-item .label{font-weight:600;font-size:13.5px;}
+.history-item .net{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--green-dark);}
+.history-item .sub{font-size:11px;color:var(--ink-soft);margin-top:3px;}
+.history-item .actions{margin-top:8px;display:flex;gap:8px;}
+.history-item .actions button{font-size:11.5px;padding:6px 10px;border-radius:6px;}
+
+.note{font-size:11.5px;color:var(--ink-soft);line-height:1.5;margin-top:8px;}
+
+/* MODAL */
+.overlay{
+  position:fixed;inset:0;background:rgba(27,30,35,0.5);
+  display:none;align-items:flex-end;justify-content:center;z-index:50;
+}
+.overlay.show{display:flex;}
+.modal{
+  background:var(--paper);width:100%;max-width:640px;border-radius:18px 18px 0 0;
+  padding:18px 18px 26px;max-height:88vh;overflow-y:auto;
+  box-shadow:0 -6px 24px rgba(0,0,0,0.2);
+}
+.modal-handle{width:38px;height:4px;background:var(--line-strong);border-radius:3px;margin:0 auto 14px;}
+.modal h3{font-family:'Special Elite',cursive;font-size:18px;margin:0 0 14px;}
+.status-toggle{display:flex;gap:6px;margin-bottom:12px;}
+.status-toggle button{
+  flex:1;padding:9px 4px;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--card);font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-soft);
+}
+.status-toggle button.active{background:var(--green);border-color:var(--green);color:#fff;}
+.computed-box{
+  background:var(--gold-tint);border:1px dashed var(--gold);border-radius:8px;
+  padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;margin:10px 0;
+}
+.computed-box div{display:flex;justify-content:space-between;padding:2px 0;}
+.modal-actions{display:flex;gap:8px;margin-top:16px;}
+.modal-actions .btn{flex:1;}
+
+/* SIGN-IN GATE */
+#authGate{
+  position:fixed;inset:0;background:var(--paper);z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.gate-card{
+  max-width:380px;width:100%;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:28px 24px;text-align:center;box-shadow:var(--shadow);
+}
+.gate-card h1{font-family:'Special Elite',cursive;font-size:24px;margin:0 0 8px;}
+.gate-card p{font-size:13px;color:var(--ink-soft);line-height:1.6;margin:0 0 20px;}
+.google-btn{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  background:#fff;border:1px solid var(--line-strong);border-radius:10px;
+  padding:12px 18px;font-weight:600;font-size:14px;color:var(--ink);
+  cursor:pointer;width:100%;
+}
+.google-btn:active{background:var(--paper-alt);}
+.gate-status{margin-top:14px;font-size:12px;color:var(--ink-soft);min-height:16px;}
+
+/* TOAST */
+#statusToast{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:8px 16px;border-radius:20px;
+  font-size:12.5px;z-index:200;opacity:0;pointer-events:none;transition:opacity 0.25s ease;
+  box-shadow:0 4px 14px rgba(0,0,0,0.25);
+}
+#statusToast.show{opacity:1;}
+#statusToast.error{background:var(--rust);}
+#statusToast.clickable{pointer-events:auto;cursor:pointer;}
+
+.close-x{position:absolute;top:14px;right:14px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-soft);}
+
+@media (max-width:400px){
+  .day-cell{font-size:11px;}
+  .net-box .v{font-size:17px;}
+}
+</style>
+</head>
+<body>
+
+<div id="statusToast"></div>
+
+<!-- SIGN-IN GATE -->
+<div id="authGate">
+  <div class="gate-card">
+    <h1>Timekeeping Ledger</h1>
+    <p>Sign in with your own Google account. Your time logs, rate, and pay are saved to a private Google Sheet in your own Drive — no one else, including other people using this same site, can see it.</p>
+    <button class="google-btn" id="signInBtn">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.4 0-13.8 4.2-17 10.3z"/><path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.5l-6.5-5.5C29.4 34.9 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.2 39.7 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.5 5.5C41.6 36.2 44 30.5 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="gate-status" id="gateStatus"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="title-block">
+      <h1>Timekeeping Ledger</h1>
+      <p>Punch in, track pay, split any cutoff.</p>
+    </div>
+    <button class="gear-btn" id="openSettings" title="Settings">⚙</button>
+  </header>
+
+  <div class="account-bar">
+    <span class="who" id="whoAmI">Signed in</span>
+    <button id="signOutBtn">Sign out</button>
+  </div>
+
+  <!-- CALENDAR -->
+  <div class="card">
+    <h2>Attendance <span class="tag" id="monthTag"></span></h2>
+    <div class="cal-nav">
+      <button id="prevMonth">‹</button>
+      <div class="month-label" id="monthLabel"></div>
+      <button id="nextMonth">›</button>
+    </div>
+    <div class="weekday-row">
+      <div class="sun">Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+    </div>
+    <div class="day-grid" id="dayGrid"></div>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>Present</span>
+      <span><i style="background:var(--rust)"></i>Absent</span>
+      <span><i style="background:var(--gold)"></i>Half day</span>
+      <span>★ Holiday</span>
+      <span><i style="background:var(--gold-tint);border:1px solid var(--gold)"></i>In selected period</span>
+    </div>
+  </div>
+
+  <!-- PERIOD / PAYROLL -->
+  <div class="card">
+    <h2>Pay Period</h2>
+    <div class="row">
+      <div class="field">
+        <label>From</label>
+        <input type="date" id="periodFrom">
+      </div>
+      <div class="field">
+        <label>To</label>
+        <input type="date" id="periodTo">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" id="calcPeriod">Calculate Pay</button>
+
+    <div id="summaryWrap" style="display:none;margin-top:16px;">
+      <hr class="divider">
+      <div class="summary-grid">
+        <div class="stat"><div class="k">Days Present</div><div class="v" id="s_present">0</div></div>
+        <div class="stat"><div class="k">Days Absent</div><div class="v" id="s_absent">0</div></div>
+        <div class="stat"><div class="k">Half Days</div><div class="v" id="s_half">0</div></div>
+        <div class="stat"><div class="k">Holidays Worked</div><div class="v" id="s_holiday">0</div></div>
+        <div class="stat"><div class="k">Regular Hours</div><div class="v" id="s_reghrs">0.0</div></div>
+        <div class="stat"><div class="k">OT Hours</div><div class="v" id="s_othrs">0.0</div></div>
+      </div>
+      <div class="line-item"><span>Gross Pay</span><span class="amt" id="s_gross">₱0.00</span></div>
+
+      <hr class="divider">
+      <h2 style="margin-bottom:8px;">Deductions &amp; Benefits</h2>
+      <div id="dedList"></div>
+      <button class="btn btn-outline btn-block" id="addDed" style="margin-top:4px;">+ Add line item</button>
+
+      <div class="net-box">
+        <span class="k">NET PAY</span>
+        <span class="v" id="netPayVal">₱0.00</span>
+      </div>
+      <button class="btn btn-primary btn-block" id="savePeriod" style="margin-top:12px;">Save This Period</button>
+    </div>
+
+    <p class="note">Regular OT hours are paid at your plain hourly rate (no premium). Sunday work adds your Sunday premium on top of regular hours only. Holiday multipliers apply to the whole day's pay (regular + OT) when you're marked present.</p>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="card">
+    <h2>Saved Periods</h2>
+    <div id="historyList"><p class="note" id="historyEmpty">No saved periods yet — calculate and save one above.</p></div>
+  </div>
+
+  <p class="note" style="text-align:center;">Everything here is saved to a Google Sheet named "Timekeeping Ledger Data" in your own Google Drive. Open it anytime in Sheets to double check or export.</p>
+
+</div>
+
+<!-- DAY MODAL -->
+<div class="overlay" id="dayOverlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="dayModalTitle">Day</h3>
+    <div class="status-toggle" id="statusToggle">
+      <button data-status="present">Present</button>
+      <button data-status="half">Half Day</button>
+      <button data-status="absent">Absent</button>
+      <button data-status="none">Clear</button>
+    </div>
+
+    <div id="presentFields">
+      <div class="row">
+        <div class="field">
+          <label>Time In</label>
+          <input type="time" id="timeIn" value="08:00">
+        </div>
+        <div class="field">
+          <label>Time Out</label>
+          <input type="time" id="timeOut" value="17:00">
+        </div>
+      </div>
+    </div>
+
+    <div class="field" style="margin-bottom:10px;">
+      <label>Holiday</label>
+      <select id="holidaySelect">
+        <option value="none">None</option>
+        <option value="regular">Regular Holiday (double pay)</option>
+        <option value="special">Special Holiday (+30%)</option>
+      </select>
+    </div>
+
+    <div class="field" style="margin-bottom:10px;">
+      <label>Notes (optional)</label>
+      <textarea id="dayNotes" placeholder="e.g. client visit, late due to traffic..."></textarea>
+    </div>
+
+    <div class="computed-box" id="computedBox"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="cancelDay">Cancel</button>
+      <button class="btn btn-primary" id="saveDay">Save Day</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3>Settings</h3>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Regular Daily Rate (₱ per 8 hrs)</label>
+      <input type="number" id="setRate" step="0.01">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Sunday Premium (%)</label>
+        <input type="number" id="setSunday" step="1">
+      </div>
+      <div class="field">
+        <label>OT Multiplier (x hourly)</label>
+        <input type="number" id="setOT" step="0.01">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Regular Holiday Multiplier</label>
+        <input type="number" id="setHolReg" step="0.01">
+      </div>
+      <div class="field">
+        <label>Special Holiday Multiplier</label>
+        <input type="number" id="setHolSpec" step="0.01">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Unpaid Lunch Break (minutes, auto-deducted on shifts over 5 hrs)</label>
+      <input type="number" id="setLunch" step="1">
+    </div>
+    <p class="note">Half day pay is always a flat half of your regular daily rate (holiday multiplier still applies if the half day falls on a holiday). Settings are saved to your own Google Sheet, so they follow you across devices too.</p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="cancelSettings">Cancel</button>
+      <button class="btn btn-primary" id="saveSettings">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =========================================================
+     CONFIG — paste your OAuth Client ID here before deploying
+     ========================================================= */
+  const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+  const SCOPES = "openid email profile https://www.googleapis.com/auth/drive.file";
+  const SHEET_FILE_NAME = "Timekeeping Ledger Data";
+
+  const defaultSettings = {
+    regularRate: 695,
+    sundayPremiumPct: 30,
+    otMultiplier: 1.0,
+    regularHolidayMult: 2.0,
+    specialHolidayMult: 1.30,
+    lunchMinutes: 60
+  };
+
+  /* ---------- STATE ---------- */
+  let accessToken = null;
+  let tokenExpiresAt = 0;
+  let currentUser = null;      // {email, name}
+  let spreadsheetId = null;
+  let tokenClient = null;
+
+  let settings = Object.assign({}, defaultSettings);
+  let days = {};          // { 'YYYY-MM-DD': {status, holiday, timeIn, timeOut, notes} }
+  let periods = [];       // array of saved period summaries
+  let draftDed = [];      // [{name, amount, type:'add'|'deduct'}]
+
+  /* ---------- TOAST ---------- */
+  let toastTimer = null;
+  function toast(msg, opts){
+    opts = opts || {};
+    const el = document.getElementById('statusToast');
+    el.textContent = msg;
+    el.className = 'show' + (opts.error ? ' error' : '') + (opts.clickable ? ' clickable' : '');
+    el.onclick = opts.onClick || null;
+    clearTimeout(toastTimer);
+    if(!opts.sticky){
+      toastTimer = setTimeout(()=>{ el.className = el.className.replace('show',''); }, opts.duration || 2200);
+    }
+  }
+  function hideToast(){
+    const el = document.getElementById('statusToast');
+    el.className = el.className.replace('show','');
+  }
+
+  /* ---------- DATE HELPERS ---------- */
+  function pad(n){ return n<10 ? '0'+n : ''+n; }
+  function toISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+  function parseISO(s){
+    const [y,m,d] = s.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
+  function fmtMoney(n){
+    if(isNaN(n)) n = 0;
+    const sign = n<0 ? '-' : '';
+    n = Math.abs(n);
+    return sign + '₱' + n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function timeToMinutes(t){
+    if(!t) return null;
+    const [h,m] = t.split(':').map(Number);
+    return h*60+m;
+  }
+
+  /* ---------- PAY LOGIC ---------- */
+  function hoursWorked(timeIn, timeOut){
+    const inM = timeToMinutes(timeIn), outM = timeToMinutes(timeOut);
+    if(inM===null || outM===null) return 0;
+    let diff = outM - inM;
+    if(diff<=0) return 0;
+    if(diff > 300){
+      diff -= (settings.lunchMinutes||0);
+    }
+    if(diff<0) diff = 0;
+    return Math.round((diff/60)*100)/100;
+  }
+
+  function computeDayPay(dateStr, d){
+    const hourlyRate = settings.regularRate/8;
+    const date = parseISO(dateStr);
+    const isSunday = date.getDay()===0;
+    const holiday = d && d.holiday ? d.holiday : 'none';
+    const holMult = holiday==='regular' ? settings.regularHolidayMult
+                    : holiday==='special' ? settings.specialHolidayMult : 1;
+
+    if(!d || !d.status || d.status==='none'){
+      return {status:'none', hoursWorked:0, regHours:0, otHours:0, pay:0, isSunday, holiday};
+    }
+    if(d.status==='absent'){
+      return {status:'absent', hoursWorked:0, regHours:0, otHours:0, pay:0, isSunday, holiday};
+    }
+    if(d.status==='half'){
+      const base = (settings.regularRate/2) * holMult;
+      return {status:'half', hoursWorked:0, regHours:0, otHours:0, pay:Math.round(base*100)/100, isSunday, holiday};
+    }
+    const hw = hoursWorked(d.timeIn, d.timeOut);
+    const regHours = Math.min(hw, 8);
+    const otHours = Math.max(hw-8, 0);
+    const baseRate = isSunday ? hourlyRate*(1+(settings.sundayPremiumPct||0)/100) : hourlyRate;
+    const basePay = baseRate*regHours;
+    const otPay = otHours*hourlyRate*(settings.otMultiplier||0);
+    const pay = (basePay+otPay)*holMult;
+    return {status:'present', hoursWorked:hw, regHours, otHours, pay:Math.round(pay*100)/100, isSunday, holiday};
+  }
+
+  function computePeriod(fromStr, toStr){
+    const from = parseISO(fromStr), to = parseISO(toStr);
+    let cur = new Date(from);
+    const out = {daysPresent:0, daysAbsent:0, halfDays:0, holidaysWorked:0, regHours:0, otHours:0, gross:0, entries:[]};
+    while(cur <= to){
+      const iso = toISO(cur);
+      const d = days[iso];
+      const r = computeDayPay(iso, d);
+      if(r.status==='present'){
+        out.daysPresent++;
+        out.regHours += r.regHours;
+        out.otHours += r.otHours;
+        if(r.holiday!=='none') out.holidaysWorked++;
+      } else if(r.status==='absent'){
+        out.daysAbsent++;
+      } else if(r.status==='half'){
+        out.halfDays++;
+        if(r.holiday!=='none') out.holidaysWorked++;
+      }
+      out.gross += r.pay;
+      out.entries.push({date:iso, ...r});
+      cur.setDate(cur.getDate()+1);
+    }
+    out.regHours = Math.round(out.regHours*100)/100;
+    out.otHours = Math.round(out.otHours*100)/100;
+    out.gross = Math.round(out.gross*100)/100;
+    return out;
+  }
+
+  /* =========================================================
+     GOOGLE AUTH
+     ========================================================= */
+  function ensureTokenClient(){
+    if(tokenClient) return;
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: SCOPES,
+      callback: () => {} // overridden per-call below
+    });
+  }
+
+  function requestToken(promptMode){
+    return new Promise((resolve) => {
+      ensureTokenClient();
+      let settled = false;
+      tokenClient.callback = (resp) => {
+        if(settled) return;
+        settled = true;
+        if(resp && resp.access_token){
+          accessToken = resp.access_token;
+          tokenExpiresAt = Date.now() + ((resp.expires_in||3600)*1000) - 30000;
+          resolve(true);
+        } else {
+          resolve(false);
+        }
+      };
+      tokenClient.error_callback = () => {
+        if(settled) return;
+        settled = true;
+        resolve(false);
+      };
+      try{
+        tokenClient.requestAccessToken({ prompt: promptMode });
+      }catch(e){
+        if(!settled){ settled = true; resolve(false); }
+      }
+      if(promptMode===''){
+        setTimeout(() => { if(!settled){ settled = true; resolve(false); } }, 2500);
+      }
+    });
+  }
+
+  async function ensureValidToken(){
+    if(accessToken && Date.now() < tokenExpiresAt) return true;
+    const ok = await requestToken('');
+    if(ok) return true;
+    toast('Session expired — tap to sign in again', {error:true, sticky:true, clickable:true, onClick: async ()=>{
+      hideToast();
+      const ok2 = await requestToken('consent');
+      if(ok2){ toast('Signed in'); }
+    }});
+    return false;
+  }
+
+  /* ---------- GOOGLE API HELPERS ---------- */
+  async function gfetch(url, opts){
+    opts = opts || {};
+    const good = await ensureValidToken();
+    if(!good) throw new Error('no-token');
+    opts.headers = Object.assign({}, opts.headers, {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    });
+    const res = await fetch(url, opts);
+    if(!res.ok){
+      const txt = await res.text();
+      throw new Error('API error ' + res.status + ': ' + txt);
+    }
+    if(res.status===204) return null;
+    return res.json();
+  }
+
+  async function fetchUserInfo(){
+    return gfetch('https://www.googleapis.com/oauth2/v3/userinfo');
+  }
+
+  async function findSpreadsheet(){
+    const q = encodeURIComponent(`name='${SHEET_FILE_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`);
+    const data = await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`);
+    if(data && data.files && data.files.length){
+      return data.files[0].id;
+    }
+    return null;
+  }
+
+  async function createSpreadsheet(){
+    const body = {
+      properties: { title: SHEET_FILE_NAME },
+      sheets: [
+        { properties: { title: 'Days' } },
+        { properties: { title: 'Periods' } },
+        { properties: { title: 'Settings' } }
+      ]
+    };
+    const data = await gfetch('https://sheets.googleapis.com/v4/spreadsheets', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    const id = data.spreadsheetId;
+
+    // headers
+    await sheetsClear(id, 'Days!A1:Z1');
+    await sheetsUpdate(id, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes']]);
+    await sheetsUpdate(id, 'Periods!A1', [['ID','From','To','DaysPresent','DaysAbsent','HalfDays','HolidaysWorked','RegHours','OTHours','Gross','NetPay','SavedAt','DeductionsJSON']]);
+    await sheetsUpdate(id, 'Settings!A1', [['Key','Value']]);
+
+    // default settings rows
+    const rows = Object.keys(defaultSettings).map(k => [k, defaultSettings[k]]);
+    await sheetsUpdate(id, 'Settings!A2', rows);
+
+    return id;
+  }
+
+  async function sheetsUpdate(id, range, values){
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
+    return gfetch(url, { method: 'PUT', body: JSON.stringify({ values }) });
+  }
+  async function sheetsClear(id, range){
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}:clear`;
+    return gfetch(url, { method: 'POST', body: '{}' });
+  }
+  async function sheetsBatchGet(id, ranges){
+    const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?${q}`;
+    return gfetch(url);
+  }
+
+  async function ensureSpreadsheet(){
+    const cacheKey = 'tk_sheet_id_' + currentUser.email;
+    let id = localStorage.getItem(cacheKey);
+    if(id){
+      try{
+        await gfetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=spreadsheetId`);
+        spreadsheetId = id;
+        return;
+      }catch(e){ /* fall through to search/create */ }
+    }
+    id = await findSpreadsheet();
+    if(!id){
+      toast('Setting up your private sheet…', {sticky:true});
+      id = await createSpreadsheet();
+    }
+    spreadsheetId = id;
+    localStorage.setItem(cacheKey, id);
+  }
+
+  /* ---------- LOAD / SAVE DATA ---------- */
+  function parseDaysRows(rows){
+    const out = {};
+    (rows||[]).forEach(r => {
+      if(!r || !r[0]) return;
+      out[r[0]] = { status:r[1]||'none', holiday:r[2]||'none', timeIn:r[3]||'', timeOut:r[4]||'', notes:r[5]||'' };
+    });
+    return out;
+  }
+  function serializeDays(daysObj){
+    return Object.keys(daysObj).sort().map(k => {
+      const d = daysObj[k];
+      return [k, d.status||'none', d.holiday||'none', d.timeIn||'', d.timeOut||'', d.notes||''];
+    });
+  }
+  function parsePeriodsRows(rows){
+    return (rows||[]).filter(r=>r && r[0]).map(r => ({
+      id: r[0],
+      from: r[1], to: r[2],
+      summary: {
+        daysPresent: Number(r[3])||0, daysAbsent: Number(r[4])||0, halfDays: Number(r[5])||0,
+        holidaysWorked: Number(r[6])||0, regHours: Number(r[7])||0, otHours: Number(r[8])||0,
+        gross: Number(r[9])||0
+      },
+      netPay: Number(r[10])||0,
+      savedAt: r[11]||'',
+      deductions: (()=>{ try{ return JSON.parse(r[12]||'[]'); }catch(e){ return []; } })()
+    })).sort((a,b)=> (a.savedAt < b.savedAt ? 1 : -1));
+  }
+  function serializePeriods(periodsArr){
+    return periodsArr.map(p => [
+      p.id, p.from, p.to,
+      p.summary.daysPresent, p.summary.daysAbsent, p.summary.halfDays, p.summary.holidaysWorked,
+      p.summary.regHours, p.summary.otHours, p.summary.gross, p.netPay, p.savedAt,
+      JSON.stringify(p.deductions||[])
+    ]);
+  }
+  function parseSettingsRows(rows){
+    const out = Object.assign({}, defaultSettings);
+    (rows||[]).forEach(r => {
+      if(!r || !r[0]) return;
+      const num = parseFloat(r[1]);
+      if(!isNaN(num)) out[r[0]] = num;
+    });
+    return out;
+  }
+
+  async function loadAllData(){
+    const data = await sheetsBatchGet(spreadsheetId, ['Days!A2:F5000','Periods!A2:M2000','Settings!A2:B20']);
+    const [daysRange, periodsRange, settingsRange] = data.valueRanges;
+    days = parseDaysRows(daysRange.values);
+    periods = parsePeriodsRows(periodsRange.values);
+    settings = parseSettingsRows(settingsRange.values);
+  }
+
+  async function persistDays(){
+    toast('Saving…', {sticky:true});
+    await sheetsClear(spreadsheetId, 'Days!A2:F5000');
+    const rows = serializeDays(days);
+    if(rows.length) await sheetsUpdate(spreadsheetId, 'Days!A2', rows);
+    toast('Saved ✓');
+  }
+  async function persistPeriods(){
+    toast('Saving…', {sticky:true});
+    await sheetsClear(spreadsheetId, 'Periods!A2:M2000');
+    const rows = serializePeriods(periods);
+    if(rows.length) await sheetsUpdate(spreadsheetId, 'Periods!A2', rows);
+    toast('Saved ✓');
+  }
+  async function persistSettings(){
+    toast('Saving…', {sticky:true});
+    await sheetsClear(spreadsheetId, 'Settings!A2:B20');
+    const rows = Object.keys(settings).map(k => [k, settings[k]]);
+    await sheetsUpdate(spreadsheetId, 'Settings!A2', rows);
+    toast('Saved ✓');
+  }
+
+  /* =========================================================
+     CALENDAR RENDER
+     ========================================================= */
+  let viewYear, viewMonth;
+  const today = new Date();
+  viewYear = today.getFullYear();
+  viewMonth = today.getMonth();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  let highlightRange = null;
+
+  function renderCalendar(){
+    document.getElementById('monthLabel').textContent = monthNames[viewMonth] + ' ' + viewYear;
+    document.getElementById('monthTag').textContent = monthNames[viewMonth].slice(0,3).toUpperCase();
+    const grid = document.getElementById('dayGrid');
+    grid.innerHTML = '';
+
+    const firstDay = new Date(viewYear, viewMonth, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+
+    for(let i=0;i<startWeekday;i++){
+      const empty = document.createElement('div');
+      empty.className = 'day-cell empty';
+      grid.appendChild(empty);
+    }
+
+    for(let day=1; day<=daysInMonth; day++){
+      const dateObj = new Date(viewYear, viewMonth, day);
+      const iso = toISO(dateObj);
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+      if(dateObj.getDay()===0) cell.classList.add('sunday');
+      if(toISO(today)===iso) cell.classList.add('today');
+
+      const d = days[iso];
+      if(d && d.status && d.status!=='none'){
+        cell.classList.add('st-'+d.status);
+      }
+      if(d && d.holiday && d.holiday!=='none'){
+        cell.classList.add('holiday');
+      }
+      if(highlightRange && iso>=highlightRange.from && iso<=highlightRange.to){
+        cell.classList.add('in-period');
+      }
+
+      cell.innerHTML = '<span class="dnum">'+day+'</span>' + ((d&&d.status&&d.status!=='none') ? '<span class="dot"></span>' : '');
+      cell.addEventListener('click', () => openDayModal(iso));
+      grid.appendChild(cell);
+    }
+  }
+
+  document.getElementById('prevMonth').addEventListener('click', ()=>{
+    viewMonth--; if(viewMonth<0){viewMonth=11; viewYear--;}
+    renderCalendar();
+  });
+  document.getElementById('nextMonth').addEventListener('click', ()=>{
+    viewMonth++; if(viewMonth>11){viewMonth=0; viewYear++;}
+    renderCalendar();
+  });
+
+  /* ---------- DAY MODAL ---------- */
+  let activeDate = null;
+  let activeStatus = 'present';
+
+  function openDayModal(iso){
+    activeDate = iso;
+    const d = days[iso] || {status:'none', holiday:'none', timeIn:'08:00', timeOut:'17:00', notes:''};
+    activeStatus = d.status || 'none';
+    document.getElementById('dayModalTitle').textContent = new Date(parseISO(iso)).toDateString();
+    document.getElementById('timeIn').value = d.timeIn || '08:00';
+    document.getElementById('timeOut').value = d.timeOut || '17:00';
+    document.getElementById('holidaySelect').value = d.holiday || 'none';
+    document.getElementById('dayNotes').value = d.notes || '';
+    updateStatusToggleUI();
+    updateComputedBox();
+    document.getElementById('dayOverlay').classList.add('show');
+  }
+  function closeDayModal(){
+    document.getElementById('dayOverlay').classList.remove('show');
+  }
+  function updateStatusToggleUI(){
+    document.querySelectorAll('#statusToggle button').forEach(b=>{
+      b.classList.toggle('active', b.dataset.status===activeStatus);
+    });
+    document.getElementById('presentFields').style.display = activeStatus==='present' ? 'block' : 'none';
+  }
+  document.getElementById('statusToggle').addEventListener('click', (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    activeStatus = btn.dataset.status;
+    updateStatusToggleUI();
+    updateComputedBox();
+  });
+  ['timeIn','timeOut','holidaySelect'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', updateComputedBox);
+    document.getElementById(id).addEventListener('change', updateComputedBox);
+  });
+  function updateComputedBox(){
+    const box = document.getElementById('computedBox');
+    const tempDay = {
+      status: activeStatus,
+      holiday: document.getElementById('holidaySelect').value,
+      timeIn: document.getElementById('timeIn').value,
+      timeOut: document.getElementById('timeOut').value
+    };
+    if(activeStatus==='none'){
+      box.innerHTML = '<div>No entry — this day will be excluded from totals.</div>';
+      return;
+    }
+    const r = computeDayPay(activeDate, tempDay);
+    let html = '';
+    if(activeStatus==='present'){
+      html += '<div><span>Hours worked</span><span>'+r.hoursWorked.toFixed(2)+' hrs</span></div>';
+      html += '<div><span>Regular hours</span><span>'+r.regHours.toFixed(2)+'</span></div>';
+      html += '<div><span>OT hours</span><span>'+r.otHours.toFixed(2)+'</span></div>';
+      if(r.isSunday) html += '<div><span>Sunday premium</span><span>+'+settings.sundayPremiumPct+'%</span></div>';
+    }
+    if(tempDay.holiday!=='none') html += '<div><span>Holiday multiplier</span><span>x'+(tempDay.holiday==='regular'?settings.regularHolidayMult:settings.specialHolidayMult)+'</span></div>';
+    html += '<div><strong>Day pay</strong><strong>'+fmtMoney(r.pay)+'</strong></div>';
+    box.innerHTML = html;
+  }
+  document.getElementById('cancelDay').addEventListener('click', closeDayModal);
+  document.getElementById('saveDay').addEventListener('click', async ()=>{
+    if(activeStatus==='none'){
+      delete days[activeDate];
+    }else{
+      days[activeDate] = {
+        status: activeStatus,
+        holiday: document.getElementById('holidaySelect').value,
+        timeIn: document.getElementById('timeIn').value,
+        timeOut: document.getElementById('timeOut').value,
+        notes: document.getElementById('dayNotes').value
+      };
+    }
+    closeDayModal();
+    renderCalendar();
+    try{ await persistDays(); }
+    catch(e){ toast('Could not save — check your connection', {error:true}); }
+  });
+
+  /* ---------- SETTINGS MODAL ---------- */
+  function openSettingsModal(){
+    document.getElementById('setRate').value = settings.regularRate;
+    document.getElementById('setSunday').value = settings.sundayPremiumPct;
+    document.getElementById('setOT').value = settings.otMultiplier;
+    document.getElementById('setHolReg').value = settings.regularHolidayMult;
+    document.getElementById('setHolSpec').value = settings.specialHolidayMult;
+    document.getElementById('setLunch').value = settings.lunchMinutes;
+    document.getElementById('settingsOverlay').classList.add('show');
+  }
+  document.getElementById('openSettings').addEventListener('click', openSettingsModal);
+  document.getElementById('cancelSettings').addEventListener('click', ()=>{
+    document.getElementById('settingsOverlay').classList.remove('show');
+  });
+  document.getElementById('saveSettings').addEventListener('click', async ()=>{
+    settings.regularRate = parseFloat(document.getElementById('setRate').value)||695;
+    settings.sundayPremiumPct = parseFloat(document.getElementById('setSunday').value)||0;
+    settings.otMultiplier = parseFloat(document.getElementById('setOT').value)||0;
+    settings.regularHolidayMult = parseFloat(document.getElementById('setHolReg').value)||1;
+    settings.specialHolidayMult = parseFloat(document.getElementById('setHolSpec').value)||1;
+    settings.lunchMinutes = parseFloat(document.getElementById('setLunch').value)||0;
+    document.getElementById('settingsOverlay').classList.remove('show');
+    renderCalendar();
+    try{ await persistSettings(); }
+    catch(e){ toast('Could not save — check your connection', {error:true}); }
+  });
+
+  /* ---------- PERIOD SUMMARY ---------- */
+  let currentSummary = null;
+
+  document.getElementById('calcPeriod').addEventListener('click', ()=>{
+    const from = document.getElementById('periodFrom').value;
+    const to = document.getElementById('periodTo').value;
+    if(!from || !to){ alert('Please pick both a From and To date.'); return; }
+    if(from > to){ alert('The From date must be before the To date.'); return; }
+    currentSummary = computePeriod(from, to);
+    highlightRange = {from, to};
+    draftDed = [];
+    renderCalendar();
+    renderSummary();
+    renderDeductions();
+    document.getElementById('summaryWrap').style.display = 'block';
+  });
+
+  function renderSummary(){
+    if(!currentSummary) return;
+    document.getElementById('s_present').textContent = currentSummary.daysPresent;
+    document.getElementById('s_absent').textContent = currentSummary.daysAbsent;
+    document.getElementById('s_half').textContent = currentSummary.halfDays;
+    document.getElementById('s_holiday').textContent = currentSummary.holidaysWorked;
+    document.getElementById('s_reghrs').textContent = currentSummary.regHours.toFixed(1);
+    document.getElementById('s_othrs').textContent = currentSummary.otHours.toFixed(1);
+    document.getElementById('s_gross').textContent = fmtMoney(currentSummary.gross);
+    renderNet();
+  }
+
+  /* ---------- DEDUCTIONS (draft, in-memory until saved) ---------- */
+  function renderDeductions(){
+    const wrap = document.getElementById('dedList');
+    wrap.innerHTML = '';
+    draftDed.forEach((item, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'ded-item';
+      row.innerHTML =
+        '<input type="text" placeholder="e.g. SSS, Allowance" value="'+(item.name||'').replace(/"/g,'&quot;')+'" data-idx="'+idx+'" data-f="name">'+
+        '<select data-idx="'+idx+'" data-f="type">'+
+          '<option value="deduct" '+(item.type==='deduct'?'selected':'')+'>Deduct</option>'+
+          '<option value="add" '+(item.type==='add'?'selected':'')+'>Add</option>'+
+        '</select>'+
+        '<input type="number" step="0.01" placeholder="0.00" value="'+(item.amount||'')+'" data-idx="'+idx+'" data-f="amount">'+
+        '<button data-idx="'+idx+'" data-act="remove">×</button>';
+      wrap.appendChild(row);
+    });
+  }
+  document.getElementById('addDed').addEventListener('click', ()=>{
+    draftDed.push({name:'', amount:0, type:'deduct'});
+    renderDeductions();
+  });
+  document.getElementById('dedList').addEventListener('input', (e)=>{
+    const idx = e.target.dataset.idx, f = e.target.dataset.f;
+    if(idx===undefined) return;
+    if(f==='amount') draftDed[idx].amount = parseFloat(e.target.value)||0;
+    else if(f==='name') draftDed[idx].name = e.target.value;
+    else if(f==='type') draftDed[idx].type = e.target.value;
+    renderNet();
+  });
+  document.getElementById('dedList').addEventListener('change', (e)=>{
+    if(e.target.dataset.f==='type'){
+      draftDed[e.target.dataset.idx].type = e.target.value;
+      renderNet();
+    }
+  });
+  document.getElementById('dedList').addEventListener('click', (e)=>{
+    if(e.target.dataset.act==='remove'){
+      draftDed.splice(e.target.dataset.idx,1);
+      renderDeductions();
+      renderNet();
+    }
+  });
+  function renderNet(){
+    if(!currentSummary) return;
+    let net = currentSummary.gross;
+    draftDed.forEach(it=>{
+      const amt = parseFloat(it.amount)||0;
+      net += (it.type==='add' ? amt : -amt);
+    });
+    document.getElementById('netPayVal').textContent = fmtMoney(net);
+  }
+
+  /* ---------- SAVE PERIOD / HISTORY ---------- */
+  document.getElementById('savePeriod').addEventListener('click', async ()=>{
+    if(!currentSummary) return;
+    const from = document.getElementById('periodFrom').value;
+    const to = document.getElementById('periodTo').value;
+    let net = currentSummary.gross;
+    draftDed.forEach(it=>{
+      const amt = parseFloat(it.amount)||0;
+      net += (it.type==='add' ? amt : -amt);
+    });
+    const record = {
+      id: String(Date.now()),
+      from, to,
+      summary: currentSummary,
+      deductions: JSON.parse(JSON.stringify(draftDed)),
+      netPay: Math.round(net*100)/100,
+      savedAt: new Date().toISOString()
+    };
+    periods.unshift(record);
+    renderHistory();
+    try{
+      await persistPeriods();
+      alert('Period saved: '+from+' to '+to+' — Net Pay '+fmtMoney(record.netPay));
+    }catch(e){
+      toast('Could not save — check your connection', {error:true});
+    }
+  });
+
+  function renderHistory(){
+    const wrap = document.getElementById('historyList');
+    if(periods.length===0){
+      wrap.innerHTML = '<p class="note" id="historyEmpty">No saved periods yet — calculate and save one above.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    periods.forEach(p=>{
+      const div = document.createElement('div');
+      div.className = 'history-item';
+      div.innerHTML =
+        '<div class="top-row"><span class="label">'+p.from+' → '+p.to+'</span><span class="net">'+fmtMoney(p.netPay)+'</span></div>'+
+        '<div class="sub">Present: '+p.summary.daysPresent+' · Absent: '+p.summary.daysAbsent+' · Half: '+p.summary.halfDays+' · OT hrs: '+p.summary.otHours.toFixed(1)+' · Gross: '+fmtMoney(p.summary.gross)+'</div>'+
+        '<div class="actions"><button class="btn btn-outline" data-act="load" data-id="'+p.id+'">Reload</button><button class="btn btn-danger" data-act="del" data-id="'+p.id+'">Delete</button></div>';
+      wrap.appendChild(div);
+    });
+  }
+  document.getElementById('historyList').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    if(btn.dataset.act==='del'){
+      periods = periods.filter(p=>p.id!==id);
+      renderHistory();
+      try{ await persistPeriods(); }catch(e){ toast('Could not save — check your connection', {error:true}); }
+    } else if(btn.dataset.act==='load'){
+      const p = periods.find(p=>p.id===id);
+      if(!p) return;
+      document.getElementById('periodFrom').value = p.from;
+      document.getElementById('periodTo').value = p.to;
+      currentSummary = computePeriod(p.from, p.to);
+      draftDed = JSON.parse(JSON.stringify(p.deductions));
+      highlightRange = {from:p.from, to:p.to};
+      renderCalendar();
+      renderSummary();
+      renderDeductions();
+      document.getElementById('summaryWrap').style.display = 'block';
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+  });
+
+  /* ---------- DEFAULT PERIOD DATES ---------- */
+  function defaultPeriodDates(){
+    const d = new Date();
+    const y = d.getFullYear(), m = d.getMonth();
+    let from, to;
+    if(d.getDate()<=15){
+      from = new Date(y,m,1); to = new Date(y,m,15);
+    }else{
+      from = new Date(y,m,16); to = new Date(y,m+1,0);
+    }
+    document.getElementById('periodFrom').value = toISO(from);
+    document.getElementById('periodTo').value = toISO(to);
+  }
+
+  /* =========================================================
+     SIGN-IN / SIGN-OUT FLOW
+     ========================================================= */
+  function showApp(){
+    document.getElementById('authGate').style.display = 'none';
+    document.getElementById('whoAmI').textContent = 'Signed in as ' + (currentUser.name || currentUser.email);
+  }
+  function showGate(msg){
+    document.getElementById('authGate').style.display = 'flex';
+    document.getElementById('gateStatus').textContent = msg || '';
+  }
+
+  async function completeSignIn(){
+    document.getElementById('gateStatus').textContent = 'Loading your data…';
+    currentUser = await fetchUserInfo();
+    await ensureSpreadsheet();
+    await loadAllData();
+    defaultPeriodDates();
+    renderCalendar();
+    renderDeductions();
+    renderHistory();
+    showApp();
+  }
+
+  document.getElementById('signInBtn').addEventListener('click', async ()=>{
+    document.getElementById('gateStatus').textContent = 'Opening Google sign-in…';
+    const ok = await requestToken('consent');
+    if(!ok){
+      document.getElementById('gateStatus').textContent = 'Sign-in was cancelled or blocked. Please try again.';
+      return;
+    }
+    try{
+      await completeSignIn();
+    }catch(e){
+      console.error(e);
+      document.getElementById('gateStatus').textContent = 'Something went wrong loading your data. Please try again.';
+    }
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', ()=>{
+    if(accessToken){
+      google.accounts.oauth2.revoke(accessToken, ()=>{});
+    }
+    accessToken = null; tokenExpiresAt = 0; currentUser = null; spreadsheetId = null;
+    days = {}; periods = []; draftDed = []; currentSummary = null; highlightRange = null;
+    document.getElementById('summaryWrap').style.display = 'none';
+    showGate('');
+  });
+
+  /* ---------- INIT ---------- */
+  window.addEventListener('load', async ()=>{
+    if(!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID')===0){
+      showGate('Setup needed: paste your Google OAuth Client ID into the GOOGLE_CLIENT_ID constant near the top of the script.');
+      return;
+    }
+    // wait for GIS script
+    let tries = 0;
+    while(typeof google==='undefined' && tries<50){
+      await new Promise(r=>setTimeout(r,100));
+      tries++;
+    }
+    if(typeof google==='undefined'){
+      showGate('Could not load Google sign-in. Check your internet connection and reload.');
+      return;
+    }
+    ensureTokenClient();
+    // try silent sign-in for returning users
+    document.getElementById('gateStatus').textContent = 'Checking for an existing session…';
+    const ok = await requestToken('');
+    if(ok){
+      try{ await completeSignIn(); }
+      catch(e){ console.error(e); showGate('Please sign in to continue.'); }
+    }else{
+      showGate('');
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
