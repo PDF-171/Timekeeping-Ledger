@@ -233,6 +233,18 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   background:var(--gold-tint);border:1px dashed var(--gold);border-radius:8px;
   padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;margin:10px 0;
 }
+.late-warning{
+  background:var(--rust-tint);border:1px solid var(--rust);border-radius:8px;
+  padding:9px 12px;font-size:12px;color:var(--rust);margin:10px 0 0;
+  display:flex;align-items:center;gap:6px;line-height:1.4;
+}
+.ot-toggle-row{display:flex;align-items:center;gap:10px;margin:2px 0 10px;}
+.ot-toggle-btn{
+  border:1px solid var(--line-strong);background:var(--card);color:var(--ink-soft);
+  border-radius:8px;padding:8px 14px;font-weight:700;font-size:12.5px;cursor:pointer;flex:none;
+}
+.ot-toggle-btn.active{background:var(--gold);border-color:var(--gold);color:#fff;}
+.ot-toggle-label{font-size:11px;color:var(--ink-soft);line-height:1.3;}
 .computed-box div{display:flex;justify-content:space-between;padding:2px 0;}
 .modal-actions{display:flex;gap:8px;margin-top:16px;}
 .modal-actions .btn{flex:1;}
@@ -354,10 +366,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         <div class="stat"><div class="k">Regular Hours</div><div class="v" id="s_reghrs">0.0</div></div>
         <div class="stat"><div class="k">OT Hours</div><div class="v" id="s_othrs">0.0</div></div>
       </div>
-      <div class="line-item"><span>Gross Pay</span><span class="amt" id="s_gross">₱0.00</span></div>
+      <div class="line-item"><span>Gross Salary (already net of lates)</span><span class="amt" id="s_gross">₱0.00</span></div>
+      <div class="line-item"><span>↳ Late Deductions Applied</span><span class="amt" id="s_late">₱0.00</span></div>
+      <div class="line-item"><span>Daily Allowance Total</span><span class="amt" id="s_allowance">₱0.00</span></div>
 
       <hr class="divider">
       <h2 style="margin-bottom:8px;">Deductions &amp; Benefits</h2>
+      <p class="note" style="margin-top:0;">Pre-filled from your permanent list in Settings — edit or remove any line just for this period.</p>
       <div id="dedList"></div>
       <button class="btn btn-outline btn-block" id="addDed" style="margin-top:4px;">+ Add line item</button>
 
@@ -368,7 +383,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       <button class="btn btn-primary btn-block" id="savePeriod" style="margin-top:12px;">Save This Period</button>
     </div>
 
-    <p class="note">Regular OT hours are paid at your plain hourly rate (no premium). Sunday work adds your Sunday premium on top of regular hours only. Holiday multipliers apply to the whole day's pay (regular + OT) when you're marked present.</p>
+    <p class="note">Regular pay is your full day rate minus proportional lateness — actual clock-out time no longer creates OT automatically. Tap "+ OT" on a day to add overtime past 5:00 PM manually. Sunday adds your Sunday premium; Holiday multipliers apply to base + OT pay. The ₱35 allowance is separate from salary and OT.</p>
   </div>
 
   <!-- HISTORY -->
@@ -404,6 +419,17 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
           <input type="time" id="timeOut" value="17:00">
         </div>
       </div>
+
+      <div class="ot-toggle-row">
+        <button type="button" id="otToggleBtn" class="ot-toggle-btn">+ OT</button>
+        <span class="ot-toggle-label">Only counts as OT if you enable this</span>
+      </div>
+      <div class="row" id="otFields" style="display:none;">
+        <div class="field">
+          <label>OT Time Out</label>
+          <input type="time" id="otTimeOut" value="19:00">
+        </div>
+      </div>
     </div>
 
     <div class="field" style="margin-bottom:10px;">
@@ -420,6 +446,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       <textarea id="dayNotes" placeholder="e.g. client visit, late due to traffic..."></textarea>
     </div>
 
+    <div class="late-warning" id="lateWarning" style="display:none;"></div>
     <div class="computed-box" id="computedBox"></div>
 
     <div class="modal-actions">
@@ -458,11 +485,24 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         <input type="number" id="setHolSpec" step="0.01">
       </div>
     </div>
-    <div class="field" style="margin-bottom:10px;">
-      <label>Unpaid Lunch Break (minutes, auto-deducted on shifts over 5 hrs)</label>
-      <input type="number" id="setLunch" step="1">
+    <div class="row">
+      <div class="field">
+        <label>Unpaid Lunch Break (minutes)</label>
+        <input type="number" id="setLunch" step="1">
+      </div>
+      <div class="field">
+        <label>Daily Allowance (₱, if present)</label>
+        <input type="number" id="setAllowance" step="0.01">
+      </div>
     </div>
-    <p class="note">Half day pay is always a flat half of your regular daily rate (holiday multiplier still applies if the half day falls on a holiday). Settings are saved to your own Google Sheet, so they follow you across devices too.</p>
+    <p class="note">Half day pay is always a flat half of your regular daily rate (holiday multiplier still applies if the half day falls on a holiday). The daily allowance is paid separately from salary on any day you're Present, Half Day, or on a Holiday you worked — it's never part of OT or pay-rate math.</p>
+
+    <hr class="divider">
+    <h3 style="margin-bottom:6px;">Permanent Deductions &amp; Benefits</h3>
+    <p class="note" style="margin-top:0;">These auto-fill every time you calculate a new pay period, so you don't have to remember them. You can still tweak or remove one just for a single period without changing this list.</p>
+    <div id="permDedList"></div>
+    <button class="btn btn-outline btn-block" id="addPermDed" style="margin-top:4px;margin-bottom:14px;">+ Add permanent line item</button>
+
     <div class="modal-actions">
       <button class="btn btn-outline" id="cancelSettings">Cancel</button>
       <button class="btn btn-primary" id="saveSettings">Save Settings</button>
@@ -481,13 +521,17 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   const SCOPES = "openid email profile https://www.googleapis.com/auth/drive.file";
   const SHEET_FILE_NAME = "Timekeeping Ledger Data";
 
+  const SCHEDULE_START_MIN = 8*60;   // 8:00 AM
+  const SCHEDULE_END_MIN = 17*60;    // 5:00 PM
+
   const defaultSettings = {
     regularRate: 695,
     sundayPremiumPct: 30,
     otMultiplier: 1.0,
     regularHolidayMult: 2.0,
     specialHolidayMult: 1.30,
-    lunchMinutes: 60
+    lunchMinutes: 60,
+    dailyAllowance: 35
   };
 
   /* ---------- STATE ---------- */
@@ -498,9 +542,10 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   let tokenClient = null;
 
   let settings = Object.assign({}, defaultSettings);
-  let days = {};          // { 'YYYY-MM-DD': {status, holiday, timeIn, timeOut, notes} }
+  let days = {};          // { 'YYYY-MM-DD': {status, holiday, timeIn, timeOut, notes, otEnabled, otTimeOut} }
   let periods = [];       // array of saved period summaries
-  let draftDed = [];      // [{name, amount, type:'add'|'deduct'}]
+  let draftDed = [];      // [{name, amount, type:'add'|'deduct'}] — per-period, pre-filled from permanentDeductions
+  let permanentDeductions = []; // [{name, amount, type:'add'|'deduct'}] — saved in Settings, auto-fills draftDed
 
   /* ---------- TOAST ---------- */
   let toastTimer = null;
@@ -540,6 +585,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   }
 
   /* ---------- PAY LOGIC ---------- */
+  // Kept for reference/display only — no longer drives OT.
   function hoursWorked(timeIn, timeOut){
     const inM = timeToMinutes(timeIn), outM = timeToMinutes(timeOut);
     if(inM===null || outM===null) return 0;
@@ -552,6 +598,19 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     return Math.round((diff/60)*100)/100;
   }
 
+  function lateMinutesFor(timeIn){
+    const inM = timeToMinutes(timeIn);
+    if(inM===null) return 0;
+    return Math.max(0, inM - SCHEDULE_START_MIN);
+  }
+
+  function otHoursFor(d){
+    if(!d || !d.otEnabled) return 0;
+    const outM = timeToMinutes(d.otTimeOut);
+    if(outM===null) return 0;
+    return Math.max(0, (outM - SCHEDULE_END_MIN)/60);
+  }
+
   function computeDayPay(dateStr, d){
     const hourlyRate = settings.regularRate/8;
     const date = parseISO(dateStr);
@@ -559,31 +618,38 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     const holiday = d && d.holiday ? d.holiday : 'none';
     const holMult = holiday==='regular' ? settings.regularHolidayMult
                     : holiday==='special' ? settings.specialHolidayMult : 1;
+    const allowance = settings.dailyAllowance||0;
 
     if(!d || !d.status || d.status==='none'){
-      return {status:'none', hoursWorked:0, regHours:0, otHours:0, pay:0, isSunday, holiday};
+      return {status:'none', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:0, allowance:0, isSunday, holiday};
     }
     if(d.status==='absent'){
-      return {status:'absent', hoursWorked:0, regHours:0, otHours:0, pay:0, isSunday, holiday};
+      return {status:'absent', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:0, allowance:0, isSunday, holiday};
     }
     if(d.status==='half'){
       const base = (settings.regularRate/2) * holMult;
-      return {status:'half', hoursWorked:0, regHours:0, otHours:0, pay:Math.round(base*100)/100, isSunday, holiday};
+      return {status:'half', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:Math.round(base*100)/100, allowance, isSunday, holiday};
     }
-    const hw = hoursWorked(d.timeIn, d.timeOut);
-    const regHours = Math.min(hw, 8);
-    const otHours = Math.max(hw-8, 0);
-    const baseRate = isSunday ? hourlyRate*(1+(settings.sundayPremiumPct||0)/100) : hourlyRate;
-    const basePay = baseRate*regHours;
+    // present
+    const dayHourlyRate = isSunday ? hourlyRate*(1+(settings.sundayPremiumPct||0)/100) : hourlyRate;
+    const basePay = dayHourlyRate*8;
+    const lateMinutes = lateMinutesFor(d.timeIn);
+    const lateDeduction = dayHourlyRate*(lateMinutes/60);
+    const otHours = otHoursFor(d);
     const otPay = otHours*hourlyRate*(settings.otMultiplier||0);
-    const pay = (basePay+otPay)*holMult;
-    return {status:'present', hoursWorked:hw, regHours, otHours, pay:Math.round(pay*100)/100, isSunday, holiday};
+    const pay = ((basePay - lateDeduction) + otPay)*holMult;
+    const regHours = Math.max(0, 8 - lateMinutes/60);
+    return {
+      status:'present', hoursWorked:hoursWorked(d.timeIn,d.timeOut), regHours, otHours,
+      lateMinutes, lateDeduction:Math.round(lateDeduction*100)/100,
+      pay:Math.round(pay*100)/100, allowance, isSunday, holiday
+    };
   }
 
   function computePeriod(fromStr, toStr){
     const from = parseISO(fromStr), to = parseISO(toStr);
     let cur = new Date(from);
-    const out = {daysPresent:0, daysAbsent:0, halfDays:0, holidaysWorked:0, regHours:0, otHours:0, gross:0, entries:[]};
+    const out = {daysPresent:0, daysAbsent:0, halfDays:0, holidaysWorked:0, regHours:0, otHours:0, gross:0, lateDeductionTotal:0, allowanceTotal:0, entries:[]};
     while(cur <= to){
       const iso = toISO(cur);
       const d = days[iso];
@@ -592,6 +658,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         out.daysPresent++;
         out.regHours += r.regHours;
         out.otHours += r.otHours;
+        out.lateDeductionTotal += r.lateDeduction||0;
         if(r.holiday!=='none') out.holidaysWorked++;
       } else if(r.status==='absent'){
         out.daysAbsent++;
@@ -600,12 +667,15 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         if(r.holiday!=='none') out.holidaysWorked++;
       }
       out.gross += r.pay;
+      out.allowanceTotal += r.allowance||0;
       out.entries.push({date:iso, ...r});
       cur.setDate(cur.getDate()+1);
     }
     out.regHours = Math.round(out.regHours*100)/100;
     out.otHours = Math.round(out.otHours*100)/100;
     out.gross = Math.round(out.gross*100)/100;
+    out.lateDeductionTotal = Math.round(out.lateDeductionTotal*100)/100;
+    out.allowanceTotal = Math.round(out.allowanceTotal*100)/100;
     return out;
   }
 
@@ -701,7 +771,8 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       sheets: [
         { properties: { title: 'Days' } },
         { properties: { title: 'Periods' } },
-        { properties: { title: 'Settings' } }
+        { properties: { title: 'Settings' } },
+        { properties: { title: 'PermanentDeductions' } }
       ]
     };
     const data = await gfetch('https://sheets.googleapis.com/v4/spreadsheets', {
@@ -712,9 +783,10 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
 
     // headers
     await sheetsClear(id, 'Days!A1:Z1');
-    await sheetsUpdate(id, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes']]);
+    await sheetsUpdate(id, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes','OTEnabled','OTTimeOut']]);
     await sheetsUpdate(id, 'Periods!A1', [['ID','From','To','DaysPresent','DaysAbsent','HalfDays','HolidaysWorked','RegHours','OTHours','Gross','NetPay','SavedAt','DeductionsJSON']]);
     await sheetsUpdate(id, 'Settings!A1', [['Key','Value']]);
+    await sheetsUpdate(id, 'PermanentDeductions!A1', [['Name','Type','Amount']]);
 
     // default settings rows
     const rows = Object.keys(defaultSettings).map(k => [k, defaultSettings[k]]);
@@ -740,20 +812,38 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   async function ensureSpreadsheet(){
     const cacheKey = 'tk_sheet_id_' + currentUser.email;
     let id = localStorage.getItem(cacheKey);
+    let known = false;
     if(id){
       try{
         await gfetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=spreadsheetId`);
         spreadsheetId = id;
-        return;
-      }catch(e){ /* fall through to search/create */ }
+        known = true;
+      }catch(e){ id = null; /* fall through to search/create */ }
     }
-    id = await findSpreadsheet();
-    if(!id){
-      toast('Setting up your private sheet…', {sticky:true});
-      id = await createSpreadsheet();
+    if(!known){
+      id = await findSpreadsheet();
+      if(!id){
+        toast('Setting up your private sheet…', {sticky:true});
+        id = await createSpreadsheet();
+      }
+      spreadsheetId = id;
+      localStorage.setItem(cacheKey, id);
     }
-    spreadsheetId = id;
-    localStorage.setItem(cacheKey, id);
+    await ensurePermanentDeductionsTab();
+  }
+
+  // Migration: older sheets created before the Permanent Deductions feature
+  // won't have this tab yet — add it silently if missing.
+  async function ensurePermanentDeductionsTab(){
+    const meta = await gfetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`);
+    const titles = (meta.sheets||[]).map(s => s.properties.title);
+    if(titles.indexOf('PermanentDeductions')===-1){
+      await gfetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: 'PermanentDeductions' } } }] })
+      });
+      await sheetsUpdate(spreadsheetId, 'PermanentDeductions!A1', [['Name','Type','Amount']]);
+    }
   }
 
   /* ---------- LOAD / SAVE DATA ---------- */
@@ -761,15 +851,26 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     const out = {};
     (rows||[]).forEach(r => {
       if(!r || !r[0]) return;
-      out[r[0]] = { status:r[1]||'none', holiday:r[2]||'none', timeIn:r[3]||'', timeOut:r[4]||'', notes:r[5]||'' };
+      out[r[0]] = {
+        status:r[1]||'none', holiday:r[2]||'none', timeIn:r[3]||'', timeOut:r[4]||'', notes:r[5]||'',
+        otEnabled: (r[6]||'')==='TRUE' || r[6]===true, otTimeOut: r[7]||'19:00'
+      };
     });
     return out;
   }
   function serializeDays(daysObj){
     return Object.keys(daysObj).sort().map(k => {
       const d = daysObj[k];
-      return [k, d.status||'none', d.holiday||'none', d.timeIn||'', d.timeOut||'', d.notes||''];
+      return [k, d.status||'none', d.holiday||'none', d.timeIn||'', d.timeOut||'', d.notes||'', d.otEnabled?'TRUE':'FALSE', d.otTimeOut||''];
     });
+  }
+  function parsePermDedRows(rows){
+    return (rows||[]).filter(r=>r && r[0]!==undefined && r[0]!=='').map(r => ({
+      name: r[0]||'', type: r[1]||'deduct', amount: Number(r[2])||0
+    }));
+  }
+  function serializePermDedRows(arr){
+    return arr.map(it => [it.name||'', it.type||'deduct', it.amount||0]);
   }
   function parsePeriodsRows(rows){
     return (rows||[]).filter(r=>r && r[0]).map(r => ({
@@ -804,16 +905,17 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   }
 
   async function loadAllData(){
-    const data = await sheetsBatchGet(spreadsheetId, ['Days!A2:F5000','Periods!A2:M2000','Settings!A2:B20']);
-    const [daysRange, periodsRange, settingsRange] = data.valueRanges;
+    const data = await sheetsBatchGet(spreadsheetId, ['Days!A2:H5000','Periods!A2:M2000','Settings!A2:B20','PermanentDeductions!A2:C200']);
+    const [daysRange, periodsRange, settingsRange, permDedRange] = data.valueRanges;
     days = parseDaysRows(daysRange.values);
     periods = parsePeriodsRows(periodsRange.values);
     settings = parseSettingsRows(settingsRange.values);
+    permanentDeductions = parsePermDedRows(permDedRange.values);
   }
 
   async function persistDays(){
     toast('Saving…', {sticky:true});
-    await sheetsClear(spreadsheetId, 'Days!A2:F5000');
+    await sheetsClear(spreadsheetId, 'Days!A2:H5000');
     const rows = serializeDays(days);
     if(rows.length) await sheetsUpdate(spreadsheetId, 'Days!A2', rows);
     toast('Saved ✓');
@@ -831,6 +933,11 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     const rows = Object.keys(settings).map(k => [k, settings[k]]);
     await sheetsUpdate(spreadsheetId, 'Settings!A2', rows);
     toast('Saved ✓');
+  }
+  async function persistPermanentDeductions(){
+    await sheetsClear(spreadsheetId, 'PermanentDeductions!A2:C200');
+    const rows = serializePermDedRows(permanentDeductions);
+    if(rows.length) await sheetsUpdate(spreadsheetId, 'PermanentDeductions!A2', rows);
   }
 
   /* =========================================================
@@ -897,16 +1004,21 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   let activeDate = null;
   let activeStatus = 'present';
 
+  let otEnabled = false;
+
   function openDayModal(iso){
     activeDate = iso;
-    const d = days[iso] || {status:'none', holiday:'none', timeIn:'08:00', timeOut:'17:00', notes:''};
+    const d = days[iso] || {status:'none', holiday:'none', timeIn:'08:00', timeOut:'17:00', notes:'', otEnabled:false, otTimeOut:'19:00'};
     activeStatus = d.status || 'none';
+    otEnabled = !!d.otEnabled;
     document.getElementById('dayModalTitle').textContent = new Date(parseISO(iso)).toDateString();
     document.getElementById('timeIn').value = d.timeIn || '08:00';
     document.getElementById('timeOut').value = d.timeOut || '17:00';
     document.getElementById('holidaySelect').value = d.holiday || 'none';
     document.getElementById('dayNotes').value = d.notes || '';
+    document.getElementById('otTimeOut').value = d.otTimeOut || '19:00';
     updateStatusToggleUI();
+    updateOtToggleUI();
     updateComputedBox();
     document.getElementById('dayOverlay').classList.add('show');
   }
@@ -919,6 +1031,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     });
     document.getElementById('presentFields').style.display = activeStatus==='present' ? 'block' : 'none';
   }
+  function updateOtToggleUI(){
+    const btn = document.getElementById('otToggleBtn');
+    const fields = document.getElementById('otFields');
+    btn.classList.toggle('active', otEnabled);
+    btn.textContent = otEnabled ? '✓ OT Enabled' : '+ OT';
+    fields.style.display = otEnabled ? 'flex' : 'none';
+  }
   document.getElementById('statusToggle').addEventListener('click', (e)=>{
     const btn = e.target.closest('button');
     if(!btn) return;
@@ -926,17 +1045,40 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     updateStatusToggleUI();
     updateComputedBox();
   });
-  ['timeIn','timeOut','holidaySelect'].forEach(id=>{
+  document.getElementById('otToggleBtn').addEventListener('click', ()=>{
+    otEnabled = !otEnabled;
+    updateOtToggleUI();
+    updateComputedBox();
+  });
+  ['timeIn','timeOut','holidaySelect','otTimeOut'].forEach(id=>{
     document.getElementById(id).addEventListener('input', updateComputedBox);
     document.getElementById(id).addEventListener('change', updateComputedBox);
   });
+  const LATE_CUTOFF_MINUTES = 10*60; // 10:00 AM
+
+  function updateLateWarning(){
+    const warnEl = document.getElementById('lateWarning');
+    const timeInVal = document.getElementById('timeIn').value;
+    const inM = timeToMinutes(timeInVal);
+    if(activeStatus==='present' && inM!==null && inM > LATE_CUTOFF_MINUTES){
+      warnEl.style.display = 'flex';
+      warnEl.innerHTML = '⚠️ Time in is after 10:00 AM — this is usually marked as a Half Day. Switch it above if that applies.';
+    } else {
+      warnEl.style.display = 'none';
+      warnEl.innerHTML = '';
+    }
+  }
+
   function updateComputedBox(){
+    updateLateWarning();
     const box = document.getElementById('computedBox');
     const tempDay = {
       status: activeStatus,
       holiday: document.getElementById('holidaySelect').value,
       timeIn: document.getElementById('timeIn').value,
-      timeOut: document.getElementById('timeOut').value
+      timeOut: document.getElementById('timeOut').value,
+      otEnabled: otEnabled,
+      otTimeOut: document.getElementById('otTimeOut').value
     };
     if(activeStatus==='none'){
       box.innerHTML = '<div>No entry — this day will be excluded from totals.</div>';
@@ -945,13 +1087,14 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     const r = computeDayPay(activeDate, tempDay);
     let html = '';
     if(activeStatus==='present'){
-      html += '<div><span>Hours worked</span><span>'+r.hoursWorked.toFixed(2)+' hrs</span></div>';
-      html += '<div><span>Regular hours</span><span>'+r.regHours.toFixed(2)+'</span></div>';
-      html += '<div><span>OT hours</span><span>'+r.otHours.toFixed(2)+'</span></div>';
+      html += '<div><span>Late minutes</span><span>'+Math.round(r.lateMinutes)+' min</span></div>';
+      if(r.lateDeduction>0) html += '<div><span>Late deduction</span><span>-'+fmtMoney(r.lateDeduction)+'</span></div>';
+      if(otEnabled) html += '<div><span>OT hours (after 5:00 PM)</span><span>'+r.otHours.toFixed(2)+'</span></div>';
       if(r.isSunday) html += '<div><span>Sunday premium</span><span>+'+settings.sundayPremiumPct+'%</span></div>';
     }
     if(tempDay.holiday!=='none') html += '<div><span>Holiday multiplier</span><span>x'+(tempDay.holiday==='regular'?settings.regularHolidayMult:settings.specialHolidayMult)+'</span></div>';
-    html += '<div><strong>Day pay</strong><strong>'+fmtMoney(r.pay)+'</strong></div>';
+    html += '<div><strong>Day pay (salary)</strong><strong>'+fmtMoney(r.pay)+'</strong></div>';
+    if(r.allowance>0) html += '<div><span>+ Daily allowance</span><span>'+fmtMoney(r.allowance)+'</span></div>';
     box.innerHTML = html;
   }
   document.getElementById('cancelDay').addEventListener('click', closeDayModal);
@@ -964,7 +1107,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         holiday: document.getElementById('holidaySelect').value,
         timeIn: document.getElementById('timeIn').value,
         timeOut: document.getElementById('timeOut').value,
-        notes: document.getElementById('dayNotes').value
+        notes: document.getElementById('dayNotes').value,
+        otEnabled: otEnabled,
+        otTimeOut: document.getElementById('otTimeOut').value
       };
     }
     closeDayModal();
@@ -974,6 +1119,46 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   });
 
   /* ---------- SETTINGS MODAL ---------- */
+  let draftPermDed = [];
+
+  function renderPermDedList(){
+    const wrap = document.getElementById('permDedList');
+    wrap.innerHTML = '';
+    draftPermDed.forEach((item, idx)=>{
+      const row = document.createElement('div');
+      row.className = 'ded-item';
+      row.innerHTML =
+        '<input type="text" placeholder="e.g. SSS, PhilHealth" value="'+(item.name||'').replace(/"/g,'&quot;')+'" data-idx="'+idx+'" data-f="name">'+
+        '<select data-idx="'+idx+'" data-f="type">'+
+          '<option value="deduct" '+(item.type==='deduct'?'selected':'')+'>Deduct</option>'+
+          '<option value="add" '+(item.type==='add'?'selected':'')+'>Add</option>'+
+        '</select>'+
+        '<input type="number" step="0.01" placeholder="0.00" value="'+(item.amount||'')+'" data-idx="'+idx+'" data-f="amount">'+
+        '<button data-idx="'+idx+'" data-act="remove">×</button>';
+      wrap.appendChild(row);
+    });
+  }
+  document.getElementById('addPermDed').addEventListener('click', ()=>{
+    draftPermDed.push({name:'', amount:0, type:'deduct'});
+    renderPermDedList();
+  });
+  document.getElementById('permDedList').addEventListener('input', (e)=>{
+    const idx = e.target.dataset.idx, f = e.target.dataset.f;
+    if(idx===undefined) return;
+    if(f==='amount') draftPermDed[idx].amount = parseFloat(e.target.value)||0;
+    else if(f==='name') draftPermDed[idx].name = e.target.value;
+    else if(f==='type') draftPermDed[idx].type = e.target.value;
+  });
+  document.getElementById('permDedList').addEventListener('change', (e)=>{
+    if(e.target.dataset.f==='type') draftPermDed[e.target.dataset.idx].type = e.target.value;
+  });
+  document.getElementById('permDedList').addEventListener('click', (e)=>{
+    if(e.target.dataset.act==='remove'){
+      draftPermDed.splice(e.target.dataset.idx,1);
+      renderPermDedList();
+    }
+  });
+
   function openSettingsModal(){
     document.getElementById('setRate').value = settings.regularRate;
     document.getElementById('setSunday').value = settings.sundayPremiumPct;
@@ -981,6 +1166,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('setHolReg').value = settings.regularHolidayMult;
     document.getElementById('setHolSpec').value = settings.specialHolidayMult;
     document.getElementById('setLunch').value = settings.lunchMinutes;
+    document.getElementById('setAllowance').value = settings.dailyAllowance;
+    draftPermDed = JSON.parse(JSON.stringify(permanentDeductions));
+    renderPermDedList();
     document.getElementById('settingsOverlay').classList.add('show');
   }
   document.getElementById('openSettings').addEventListener('click', openSettingsModal);
@@ -994,9 +1182,11 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     settings.regularHolidayMult = parseFloat(document.getElementById('setHolReg').value)||1;
     settings.specialHolidayMult = parseFloat(document.getElementById('setHolSpec').value)||1;
     settings.lunchMinutes = parseFloat(document.getElementById('setLunch').value)||0;
+    settings.dailyAllowance = parseFloat(document.getElementById('setAllowance').value)||0;
+    permanentDeductions = JSON.parse(JSON.stringify(draftPermDed));
     document.getElementById('settingsOverlay').classList.remove('show');
     renderCalendar();
-    try{ await persistSettings(); }
+    try{ await persistSettings(); await persistPermanentDeductions(); }
     catch(e){ toast('Could not save — check your connection', {error:true}); }
   });
 
@@ -1010,7 +1200,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     if(from > to){ alert('The From date must be before the To date.'); return; }
     currentSummary = computePeriod(from, to);
     highlightRange = {from, to};
-    draftDed = [];
+    draftDed = JSON.parse(JSON.stringify(permanentDeductions));
     renderCalendar();
     renderSummary();
     renderDeductions();
@@ -1026,6 +1216,8 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('s_reghrs').textContent = currentSummary.regHours.toFixed(1);
     document.getElementById('s_othrs').textContent = currentSummary.otHours.toFixed(1);
     document.getElementById('s_gross').textContent = fmtMoney(currentSummary.gross);
+    document.getElementById('s_late').textContent = fmtMoney(currentSummary.lateDeductionTotal);
+    document.getElementById('s_allowance').textContent = fmtMoney(currentSummary.allowanceTotal);
     renderNet();
   }
 
@@ -1074,7 +1266,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   });
   function renderNet(){
     if(!currentSummary) return;
-    let net = currentSummary.gross;
+    let net = currentSummary.gross + currentSummary.allowanceTotal;
     draftDed.forEach(it=>{
       const amt = parseFloat(it.amount)||0;
       net += (it.type==='add' ? amt : -amt);
@@ -1087,7 +1279,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     if(!currentSummary) return;
     const from = document.getElementById('periodFrom').value;
     const to = document.getElementById('periodTo').value;
-    let net = currentSummary.gross;
+    let net = currentSummary.gross + currentSummary.allowanceTotal;
     draftDed.forEach(it=>{
       const amt = parseFloat(it.amount)||0;
       net += (it.type==='add' ? amt : -amt);
@@ -1209,7 +1401,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       google.accounts.oauth2.revoke(accessToken, ()=>{});
     }
     accessToken = null; tokenExpiresAt = 0; currentUser = null; spreadsheetId = null;
-    days = {}; periods = []; draftDed = []; currentSummary = null; highlightRange = null;
+    days = {}; periods = []; draftDed = []; permanentDeductions = []; currentSummary = null; highlightRange = null;
     document.getElementById('summaryWrap').style.display = 'none';
     showGate('');
   });
