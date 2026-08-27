@@ -364,11 +364,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         <div class="stat"><div class="k">Half Days</div><div class="v" id="s_half">0</div></div>
         <div class="stat"><div class="k">Holidays Worked</div><div class="v" id="s_holiday">0</div></div>
         <div class="stat"><div class="k">Regular Hours</div><div class="v" id="s_reghrs">0.0</div></div>
-        <div class="stat"><div class="k">OT Hours</div><div class="v" id="s_othrs">0.0</div></div>
+        <div class="stat"><div class="k">Credited OT Hours</div><div class="v" id="s_othrs">0.0</div></div>
       </div>
       <div class="line-item"><span>Gross Salary (already net of lates)</span><span class="amt" id="s_gross">₱0.00</span></div>
       <div class="line-item"><span>↳ Late Deductions Applied</span><span class="amt" id="s_late">₱0.00</span></div>
       <div class="line-item"><span>Daily Allowance Total</span><span class="amt" id="s_allowance">₱0.00</span></div>
+      <div class="line-item" id="s_offsetRow" style="display:none;"><span>Offset Hours Earned (Manager)</span><span class="amt" id="s_offset">0.0</span></div>
+      <div class="late-warning" id="s_forfeitWarning" style="display:none;margin-top:10px;"></div>
 
       <hr class="divider">
       <h2 style="margin-bottom:8px;">Deductions &amp; Benefits</h2>
@@ -383,7 +385,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       <button class="btn btn-primary btn-block" id="savePeriod" style="margin-top:12px;">Save This Period</button>
     </div>
 
-    <p class="note">Regular pay is your full day rate minus proportional lateness — actual clock-out time no longer creates OT automatically. Tap "+ OT" on a day to add overtime past 5:00 PM manually. Sunday adds your Sunday premium; Holiday multipliers apply to base + OT pay.</p>
+    <p class="note">Late, half-day, and OT thresholds now follow your Employee Classification set in Settings (⚙). Morning OT and Evening OT only count when you explicitly enable them for that day — clock times alone never create OT. Credited OT rounds down to the nearest 30 min (nothing under 1 hr counts). Sunday, Holiday, and compressed-week Saturday premiums stack additively on your base pay, and OT is paid at your OT multiplier × that day's premium.</p>
   </div>
 
   <!-- HISTORY -->
@@ -421,7 +423,18 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       </div>
 
       <div class="ot-toggle-row">
-        <button type="button" id="otToggleBtn" class="ot-toggle-btn">+ OT</button>
+        <button type="button" id="morningOtToggleBtn" class="ot-toggle-btn">+ Morning OT</button>
+        <span class="ot-toggle-label">Required/approved early work only &mdash; early arrival alone doesn't count</span>
+      </div>
+      <div class="row" id="morningOtFields" style="display:none;">
+        <div class="field">
+          <label>Required Work Start</label>
+          <input type="time" id="morningOtStart" value="07:00">
+        </div>
+      </div>
+
+      <div class="ot-toggle-row">
+        <button type="button" id="otToggleBtn" class="ot-toggle-btn">+ Evening OT</button>
         <span class="ot-toggle-label">Only counts as OT if you enable this</span>
       </div>
       <div class="row" id="otFields" style="display:none;">
@@ -462,6 +475,14 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     <div class="modal-handle"></div>
     <h3>Settings</h3>
     <div class="field" style="margin-bottom:10px;">
+      <label>Employee Classification</label>
+      <select id="setClassification">
+        <option value="regular">Regular Employee (8:00 AM–5:00 PM)</option>
+        <option value="nine_six">9:00 AM–6:00 PM Employee</option>
+        <option value="manager">Manager (fixed pay, no paid OT)</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
       <label>Regular Daily Rate (₱ per 8 hrs)</label>
       <input type="number" id="setRate" step="0.01">
     </div>
@@ -495,7 +516,21 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         <input type="number" id="setAllowance" step="0.01">
       </div>
     </div>
-    <p class="note">Half day pay is always a flat half of your regular daily rate (holiday multiplier still applies if the half day falls on a holiday). The daily allowance is paid separately from salary on any day you're Present, Half Day, or on a Holiday you worked — it's never part of OT or pay-rate math.</p>
+    <p class="note">OT multiplier 1.25 = 125% of your hourly rate (company standard). OT under 1 full hour doesn't count; once you hit 1 hour, credited OT rounds down to the nearest 30 minutes. Half Day pay is now proportional to actual hours worked, up to 8, before OT can begin. The daily allowance is separate from salary/OT and pays on any Present, Half Day, or worked-Holiday day.</p>
+
+    <hr class="divider">
+    <h3 style="margin-bottom:6px;">Compressed Weeks</h3>
+    <p class="note" style="margin-top:0;">Toggle any week on to extend that week's Mon–Fri schedule to 8:00 AM–6:30 PM and make that week's Saturday optional (130% rest-day rate if you work it). Pick any date inside the week you want to toggle.</p>
+    <div class="row">
+      <div class="field">
+        <label>Any date in the week</label>
+        <input type="date" id="compressedWeekPicker">
+      </div>
+      <div class="field" style="display:flex;align-items:flex-end;">
+        <button class="btn btn-outline btn-block" id="toggleCompressedWeekBtn" type="button">Toggle This Week</button>
+      </div>
+    </div>
+    <div id="compressedWeeksChips" style="margin-bottom:14px;"></div>
 
     <hr class="divider">
     <h3 style="margin-bottom:6px;">Permanent Deductions &amp; Benefits</h3>
@@ -521,17 +556,18 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   const SCOPES = "openid email profile https://www.googleapis.com/auth/drive.file";
   const SHEET_FILE_NAME = "Timekeeping Ledger Data";
 
-  const SCHEDULE_START_MIN = 8*60;   // 8:00 AM
-  const SCHEDULE_END_MIN = 17*60;    // 5:00 PM
+  // Schedule thresholds are now classification-aware — see getSchedule() below.
 
   const defaultSettings = {
     regularRate: 695,
     sundayPremiumPct: 30,
-    otMultiplier: 1.0,
+    otMultiplier: 1.25,
     regularHolidayMult: 2.0,
     specialHolidayMult: 1.30,
     lunchMinutes: 60,
-    dailyAllowance: 0
+    dailyAllowance: 35,
+    employeeClassification: 'regular',   // 'regular' | 'nine_six' | 'manager'
+    compressedWeeksJSON: '[]'            // JSON array of Monday-ISO-dates flagged as compressed weeks
   };
 
   /* ---------- STATE ---------- */
@@ -542,10 +578,11 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   let tokenClient = null;
 
   let settings = Object.assign({}, defaultSettings);
-  let days = {};          // { 'YYYY-MM-DD': {status, holiday, timeIn, timeOut, notes, otEnabled, otTimeOut} }
+  let days = {};          // { 'YYYY-MM-DD': {status, holiday, timeIn, timeOut, notes, morningOtEnabled, morningOtStart, otEnabled, otTimeOut} }
   let periods = [];       // array of saved period summaries
   let draftDed = [];      // [{name, amount, type:'add'|'deduct'}] — per-period, pre-filled from permanentDeductions
   let permanentDeductions = []; // [{name, amount, type:'add'|'deduct'}] — saved in Settings, auto-fills draftDed
+  let dataLoaded = false; // guards against saving before an initial load has completed
 
   /* ---------- TOAST ---------- */
   let toastTimer = null;
@@ -584,8 +621,51 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     return h*60+m;
   }
 
+  /* ---------- SCHEDULE / CLASSIFICATION HELPERS ---------- */
+  function mondayOfWeek(dateStr){
+    const d = parseISO(dateStr);
+    const dow = d.getDay(); // 0=Sun..6=Sat
+    const diffToMonday = (dow===0) ? -6 : (1-dow);
+    const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate()+diffToMonday);
+    return toISO(mon);
+  }
+  function getCompressedWeeks(){
+    try{ return JSON.parse(settings.compressedWeeksJSON||'[]'); }catch(e){ return []; }
+  }
+  function isCompressedWeek(dateStr){
+    return getCompressedWeeks().indexOf(mondayOfWeek(dateStr)) !== -1;
+  }
+  function toggleCompressedWeek(dateStr){
+    const mon = mondayOfWeek(dateStr);
+    let list = getCompressedWeeks();
+    const idx = list.indexOf(mon);
+    if(idx===-1) list.push(mon); else list.splice(idx,1);
+    settings.compressedWeeksJSON = JSON.stringify(list);
+  }
+
+  // Schedule thresholds per Sections 3–5, 8, 14, 16 of the Time Ledger Rulings.
+  function getSchedule(dateStr){
+    const cls = settings.employeeClassification || 'regular';
+    let base;
+    if(cls==='nine_six'){
+      base = {start:9*60, end:18*60, graceEnd:9*60+10, halfStart:11*60, halfEnd:14*60+59, noLateDeduction:false};
+    } else if(cls==='manager'){
+      base = {start:8*60, end:17*60, graceEnd:8*60+10, halfStart:10*60, halfEnd:13*60+59, noLateDeduction:true};
+    } else {
+      base = {start:8*60, end:17*60, graceEnd:8*60+10, halfStart:10*60, halfEnd:13*60+59, noLateDeduction:false};
+    }
+    const dow = parseISO(dateStr).getDay();
+    base.isCompressedWeek = isCompressedWeek(dateStr);
+    base.isCompressedSaturday = false;
+    if(base.isCompressedWeek){
+      if(dow>=1 && dow<=5) base.end = 18*60+30; // 6:30 PM, Section 16
+      else if(dow===6) base.isCompressedSaturday = true; // Section 17: rest-day/Sunday-type if worked
+    }
+    return base;
+  }
+
   /* ---------- PAY LOGIC ---------- */
-  // Kept for reference/display only — no longer drives OT.
+  // Elapsed clock time, used for half-day proportional hours (Section 9) — not for OT.
   function hoursWorked(timeIn, timeOut){
     const inM = timeToMinutes(timeIn), outM = timeToMinutes(timeOut);
     if(inM===null || outM===null) return 0;
@@ -598,58 +678,119 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     return Math.round((diff/60)*100)/100;
   }
 
-  function lateMinutesFor(timeIn){
+  // Section 5: grace period, then late is counted from scheduled start (not from end of grace).
+  function lateMinutesFor(timeIn, schedule){
     const inM = timeToMinutes(timeIn);
     if(inM===null) return 0;
-    return Math.max(0, inM - SCHEDULE_START_MIN);
+    if(inM <= schedule.graceEnd) return 0;
+    return Math.max(0, inM - schedule.start);
   }
-
-  function otHoursFor(d){
+  // Section 6: early clock-in only counts as OT if explicitly marked required/approved.
+  function morningOtHoursFor(d, schedule){
+    if(!d || !d.morningOtEnabled) return 0;
+    const startM = timeToMinutes(d.morningOtStart);
+    if(startM===null) return 0;
+    return Math.max(0, (schedule.start - startM)/60);
+  }
+  function eveningOtHoursFor(d, schedule){
     if(!d || !d.otEnabled) return 0;
     const outM = timeToMinutes(d.otTimeOut);
     if(outM===null) return 0;
-    return Math.max(0, (outM - SCHEDULE_END_MIN)/60);
+    return Math.max(0, (outM - schedule.end)/60);
+  }
+  // Section 11: OT under 1 hour doesn't count; otherwise round down to nearest 30 min.
+  function applyOtRounding(hoursRaw){
+    if(hoursRaw < 1) return 0;
+    return Math.floor(hoursRaw*2)/2;
   }
 
   function computeDayPay(dateStr, d){
     const hourlyRate = settings.regularRate/8;
+    const schedule = getSchedule(dateStr);
+    const cls = settings.employeeClassification || 'regular';
+    const isManager = cls==='manager';
     const date = parseISO(dateStr);
     const isSunday = date.getDay()===0;
+    const sundayEquivalent = isSunday || schedule.isCompressedSaturday; // Section 17 mirrors Sunday's 130%
+    const sundayPct = (settings.sundayPremiumPct||0)/100;
     const holiday = d && d.holiday ? d.holiday : 'none';
-    const holMult = holiday==='regular' ? settings.regularHolidayMult
-                    : holiday==='special' ? settings.specialHolidayMult : 1;
-    const allowance = settings.dailyAllowance||0;
+    const status = d && d.status ? d.status : 'none';
+    const allowance = (status==='present'||status==='half') ? (settings.dailyAllowance||0) : 0;
 
-    if(!d || !d.status || d.status==='none'){
-      return {status:'none', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:0, allowance:0, isSunday, holiday};
+    // Section 22: forfeiture warning only (never auto-applied) if fully absent the day before a Regular Holiday.
+    const prevIso = toISO(new Date(date.getFullYear(), date.getMonth(), date.getDate()-1));
+    const prevDay = days[prevIso];
+    const holidayForfeitWarning = (holiday==='regular' && !!prevDay && prevDay.status==='absent');
+
+    const zero = (st)=>({status:st, holiday, isSunday, pay:0, allowance:0, lateMinutes:0, lateDeduction:0, otHours:0, offsetHours:0, regHours:0, holidayForfeitWarning:false, hoursWorked:0});
+
+    // --- Special Non-Working Holiday: No Work No Pay; 130% if worked (Section 24) ---
+    if(holiday==='special'){
+      if(status!=='present') return zero(status);
+      const dayMult = 1.30 + (sundayEquivalent?sundayPct:0);
+      const lateMin = isManager?0:lateMinutesFor(d.timeIn, schedule);
+      const lateDeduction = hourlyRate*(lateMin/60);
+      const creditedOT = applyOtRounding(morningOtHoursFor(d,schedule)+eveningOtHoursFor(d,schedule));
+      const otMult = (settings.otMultiplier||1.25)*dayMult;
+      const basePay = hourlyRate*8*dayMult - lateDeduction;
+      const otPay = isManager?0:(creditedOT*hourlyRate*otMult);
+      return {status:'present', holiday, isSunday, allowance,
+        lateMinutes:lateMin, lateDeduction:Math.round(lateDeduction*100)/100,
+        otHours:creditedOT, offsetHours:isManager?creditedOT:0, regHours:8,
+        holidayForfeitWarning:false, hoursWorked:hoursWorked(d.timeIn,d.timeOut),
+        pay:Math.round((basePay+otPay)*100)/100};
     }
-    if(d.status==='absent'){
-      return {status:'absent', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:0, allowance:0, isSunday, holiday};
+
+    // --- Regular Holiday, not worked: 100% by default if qualified (Section 20.1) ---
+    if(holiday==='regular' && status!=='present'){
+      return {status, holiday, isSunday, pay:Math.round(settings.regularRate*100)/100, allowance:0,
+        lateMinutes:0, lateDeduction:0, otHours:0, offsetHours:0, regHours:0,
+        holidayForfeitWarning, hoursWorked:0};
     }
-    if(d.status==='half'){
-      const base = (settings.regularRate/2) * holMult;
-      return {status:'half', hoursWorked:0, regHours:0, otHours:0, lateMinutes:0, lateDeduction:0, pay:Math.round(base*100)/100, allowance, isSunday, holiday};
+
+    if(status==='none') return zero('none');
+    if(status==='absent') return zero('absent');
+
+    const holidayComponent = (holiday==='regular') ? 1.0 : 0; // Section 20.2/21
+    const sundayComponent = sundayEquivalent ? sundayPct : 0;
+    const dayMult = 1 + holidayComponent + sundayComponent;
+    const otMult = (settings.otMultiplier||1.25) * dayMult; // Section 19: e.g. Sunday 130%×125%=162.5%
+
+    // --- Half-Day: proportional hours, must reach 8 total before OT begins (Section 9) ---
+    if(status==='half'){
+      const hw = hoursWorked(d.timeIn, d.timeOut);
+      const regHoursCompleted = Math.min(hw, 8);
+      const otRaw = Math.max(0, hw-8) + morningOtHoursFor(d, schedule);
+      const creditedOT = applyOtRounding(otRaw);
+      const basePay = hourlyRate*regHoursCompleted*dayMult;
+      const otPay = isManager?0:(creditedOT*hourlyRate*otMult);
+      return {status:'half', holiday, isSunday, allowance,
+        lateMinutes:0, lateDeduction:0, otHours:creditedOT, offsetHours:isManager?creditedOT:0,
+        regHours:Math.round(regHoursCompleted*100)/100, holidayForfeitWarning:false,
+        hoursWorked:hw, pay:Math.round((basePay+otPay)*100)/100};
     }
-    // present
-    const dayHourlyRate = isSunday ? hourlyRate*(1+(settings.sundayPremiumPct||0)/100) : hourlyRate;
-    const basePay = dayHourlyRate*8;
-    const lateMinutes = lateMinutesFor(d.timeIn);
-    const lateDeduction = dayHourlyRate*(lateMinutes/60);
-    const otHours = otHoursFor(d);
-    const otPay = otHours*hourlyRate*(settings.otMultiplier||0);
-    const pay = ((basePay - lateDeduction) + otPay)*holMult;
-    const regHours = Math.max(0, 8 - lateMinutes/60);
+
+    // --- Present ---
+    const lateMin = isManager?0:lateMinutesFor(d.timeIn, schedule); // Section 14.2: manager late not accountable
+    const lateDeduction = hourlyRate*(lateMin/60);
+    const creditedOT = applyOtRounding(morningOtHoursFor(d,schedule)+eveningOtHoursFor(d,schedule));
+    const basePay = hourlyRate*8*dayMult - lateDeduction;
+    const otPay = isManager?0:(creditedOT*hourlyRate*otMult); // Section 14.4: manager OT -> offset, not pay
+    const regHours = Math.max(0, 8 - lateMin/60);
     return {
-      status:'present', hoursWorked:hoursWorked(d.timeIn,d.timeOut), regHours, otHours,
-      lateMinutes, lateDeduction:Math.round(lateDeduction*100)/100,
-      pay:Math.round(pay*100)/100, allowance, isSunday, holiday
+      status:'present', holiday, isSunday, allowance,
+      lateMinutes:lateMin, lateDeduction:Math.round(lateDeduction*100)/100,
+      otHours:creditedOT, offsetHours:isManager?creditedOT:0,
+      regHours:Math.round(regHours*100)/100, holidayForfeitWarning:false,
+      hoursWorked:hoursWorked(d.timeIn,d.timeOut), pay:Math.round((basePay+otPay)*100)/100
     };
   }
 
   function computePeriod(fromStr, toStr){
     const from = parseISO(fromStr), to = parseISO(toStr);
     let cur = new Date(from);
-    const out = {daysPresent:0, daysAbsent:0, halfDays:0, holidaysWorked:0, regHours:0, otHours:0, gross:0, lateDeductionTotal:0, allowanceTotal:0, entries:[]};
+    const out = {daysPresent:0, daysAbsent:0, halfDays:0, holidaysWorked:0, regHours:0, otHours:0, gross:0,
+      lateDeductionTotal:0, allowanceTotal:0, offsetHoursTotal:0, forfeitWarningDates:[], entries:[]};
     while(cur <= to){
       const iso = toISO(cur);
       const d = days[iso];
@@ -664,10 +805,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         out.daysAbsent++;
       } else if(r.status==='half'){
         out.halfDays++;
+        out.otHours += r.otHours||0;
         if(r.holiday!=='none') out.holidaysWorked++;
       }
       out.gross += r.pay;
       out.allowanceTotal += r.allowance||0;
+      out.offsetHoursTotal += r.offsetHours||0;
+      if(r.holidayForfeitWarning) out.forfeitWarningDates.push(iso);
       out.entries.push({date:iso, ...r});
       cur.setDate(cur.getDate()+1);
     }
@@ -676,6 +820,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     out.gross = Math.round(out.gross*100)/100;
     out.lateDeductionTotal = Math.round(out.lateDeductionTotal*100)/100;
     out.allowanceTotal = Math.round(out.allowanceTotal*100)/100;
+    out.offsetHoursTotal = Math.round(out.offsetHoursTotal*100)/100;
     return out;
   }
 
@@ -783,7 +928,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
 
     // headers
     await sheetsClear(id, 'Days!A1:Z1');
-    await sheetsUpdate(id, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes','OTEnabled','OTTimeOut']]);
+    await sheetsUpdate(id, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes','OTEnabled','OTTimeOut','MorningOTEnabled','MorningOTStart']]);
     await sheetsUpdate(id, 'Periods!A1', [['ID','From','To','DaysPresent','DaysAbsent','HalfDays','HolidaysWorked','RegHours','OTHours','Gross','NetPay','SavedAt','DeductionsJSON']]);
     await sheetsUpdate(id, 'Settings!A1', [['Key','Value']]);
     await sheetsUpdate(id, 'PermanentDeductions!A1', [['Name','Type','Amount']]);
@@ -830,6 +975,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       localStorage.setItem(cacheKey, id);
     }
     await ensurePermanentDeductionsTab();
+    await ensureDaysHeaders();
   }
 
   // Migration: older sheets created before the Permanent Deductions feature
@@ -845,6 +991,11 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       await sheetsUpdate(spreadsheetId, 'PermanentDeductions!A1', [['Name','Type','Amount']]);
     }
   }
+  // Migration: older sheets won't have the Morning OT columns yet — refresh the header row
+  // (idempotent, harmless to run every load; never touches existing data rows).
+  async function ensureDaysHeaders(){
+    await sheetsUpdate(spreadsheetId, 'Days!A1', [['Date','Status','Holiday','TimeIn','TimeOut','Notes','OTEnabled','OTTimeOut','MorningOTEnabled','MorningOTStart']]);
+  }
 
   /* ---------- LOAD / SAVE DATA ---------- */
   function parseDaysRows(rows){
@@ -853,7 +1004,8 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       if(!r || !r[0]) return;
       out[r[0]] = {
         status:r[1]||'none', holiday:r[2]||'none', timeIn:r[3]||'', timeOut:r[4]||'', notes:r[5]||'',
-        otEnabled: (r[6]||'')==='TRUE' || r[6]===true, otTimeOut: r[7]||'19:00'
+        otEnabled: (r[6]||'')==='TRUE' || r[6]===true, otTimeOut: r[7]||'19:00',
+        morningOtEnabled: (r[8]||'')==='TRUE' || r[8]===true, morningOtStart: r[9]||'07:00'
       };
     });
     return out;
@@ -861,7 +1013,8 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   function serializeDays(daysObj){
     return Object.keys(daysObj).sort().map(k => {
       const d = daysObj[k];
-      return [k, d.status||'none', d.holiday||'none', d.timeIn||'', d.timeOut||'', d.notes||'', d.otEnabled?'TRUE':'FALSE', d.otTimeOut||''];
+      return [k, d.status||'none', d.holiday||'none', d.timeIn||'', d.timeOut||'', d.notes||'',
+        d.otEnabled?'TRUE':'FALSE', d.otTimeOut||'', d.morningOtEnabled?'TRUE':'FALSE', d.morningOtStart||''];
     });
   }
   function parsePermDedRows(rows){
@@ -894,10 +1047,15 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       JSON.stringify(p.deductions||[])
     ]);
   }
+  const SETTINGS_STRING_KEYS = ['employeeClassification','compressedWeeksJSON'];
   function parseSettingsRows(rows){
     const out = Object.assign({}, defaultSettings);
     (rows||[]).forEach(r => {
       if(!r || !r[0]) return;
+      if(SETTINGS_STRING_KEYS.indexOf(r[0])!==-1){
+        if(r[1]!==undefined && r[1]!=='') out[r[0]] = r[1];
+        return;
+      }
       const num = parseFloat(r[1]);
       if(!isNaN(num)) out[r[0]] = num;
     });
@@ -905,22 +1063,42 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   }
 
   async function loadAllData(){
-    const data = await sheetsBatchGet(spreadsheetId, ['Days!A2:H5000','Periods!A2:M2000','Settings!A2:B20','PermanentDeductions!A2:C200']);
+    const data = await sheetsBatchGet(spreadsheetId, ['Days!A2:J5000','Periods!A2:M2000','Settings!A2:B20','PermanentDeductions!A2:C200']);
     const [daysRange, periodsRange, settingsRange, permDedRange] = data.valueRanges;
     days = parseDaysRows(daysRange.values);
     periods = parsePeriodsRows(periodsRange.values);
     settings = parseSettingsRows(settingsRange.values);
     permanentDeductions = parsePermDedRows(permDedRange.values);
+    dataLoaded = true; // only after a full, successful load do we allow any save to the sheet
   }
 
   async function persistDays(){
+    if(!dataLoaded){
+      toast('Still loading your data — please wait a moment and try again', {error:true});
+      throw new Error('blocked-save-before-load');
+    }
     toast('Saving…', {sticky:true});
-    await sheetsClear(spreadsheetId, 'Days!A2:H5000');
+    // Safety net: never let a save silently erase far more rows than we expect to touch.
+    // If what's already on the sheet has noticeably more entries than what we're about to
+    // write, something is wrong (stale cache, wrong sheet, etc.) — abort instead of wiping data.
+    const remote = await sheetsBatchGet(spreadsheetId, ['Days!A2:J5000']);
+    const remoteDays = parseDaysRows(remote.valueRanges[0].values);
+    const remoteCount = Object.keys(remoteDays).length;
+    const localCount = Object.keys(days).length;
+    if(remoteCount > localCount + 5){
+      toast('Save blocked — sheet has more entries than expected. Reload the page before saving again.', {error:true, sticky:true});
+      throw new Error('blocked-save-possible-data-loss');
+    }
+    await sheetsClear(spreadsheetId, 'Days!A2:J5000');
     const rows = serializeDays(days);
     if(rows.length) await sheetsUpdate(spreadsheetId, 'Days!A2', rows);
     toast('Saved ✓');
   }
   async function persistPeriods(){
+    if(!dataLoaded){
+      toast('Still loading your data — please wait a moment and try again', {error:true});
+      throw new Error('blocked-save-before-load');
+    }
     toast('Saving…', {sticky:true});
     await sheetsClear(spreadsheetId, 'Periods!A2:M2000');
     const rows = serializePeriods(periods);
@@ -928,6 +1106,10 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     toast('Saved ✓');
   }
   async function persistSettings(){
+    if(!dataLoaded){
+      toast('Still loading your data — please wait a moment and try again', {error:true});
+      throw new Error('blocked-save-before-load');
+    }
     toast('Saving…', {sticky:true});
     await sheetsClear(spreadsheetId, 'Settings!A2:B20');
     const rows = Object.keys(settings).map(k => [k, settings[k]]);
@@ -935,6 +1117,10 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     toast('Saved ✓');
   }
   async function persistPermanentDeductions(){
+    if(!dataLoaded){
+      toast('Still loading your data — please wait a moment and try again', {error:true});
+      throw new Error('blocked-save-before-load');
+    }
     await sheetsClear(spreadsheetId, 'PermanentDeductions!A2:C200');
     const rows = serializePermDedRows(permanentDeductions);
     if(rows.length) await sheetsUpdate(spreadsheetId, 'PermanentDeductions!A2', rows);
@@ -1005,20 +1191,24 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   let activeStatus = 'present';
 
   let otEnabled = false;
+  let morningOtEnabled = false;
 
   function openDayModal(iso){
     activeDate = iso;
-    const d = days[iso] || {status:'none', holiday:'none', timeIn:'08:00', timeOut:'17:00', notes:'', otEnabled:false, otTimeOut:'19:00'};
+    const d = days[iso] || {status:'none', holiday:'none', timeIn:'08:00', timeOut:'17:00', notes:'', otEnabled:false, otTimeOut:'19:00', morningOtEnabled:false, morningOtStart:'07:00'};
     activeStatus = d.status || 'none';
     otEnabled = !!d.otEnabled;
+    morningOtEnabled = !!d.morningOtEnabled;
     document.getElementById('dayModalTitle').textContent = new Date(parseISO(iso)).toDateString();
     document.getElementById('timeIn').value = d.timeIn || '08:00';
     document.getElementById('timeOut').value = d.timeOut || '17:00';
     document.getElementById('holidaySelect').value = d.holiday || 'none';
     document.getElementById('dayNotes').value = d.notes || '';
     document.getElementById('otTimeOut').value = d.otTimeOut || '19:00';
+    document.getElementById('morningOtStart').value = d.morningOtStart || '07:00';
     updateStatusToggleUI();
     updateOtToggleUI();
+    updateMorningOtToggleUI();
     updateComputedBox();
     document.getElementById('dayOverlay').classList.add('show');
   }
@@ -1035,8 +1225,15 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     const btn = document.getElementById('otToggleBtn');
     const fields = document.getElementById('otFields');
     btn.classList.toggle('active', otEnabled);
-    btn.textContent = otEnabled ? '✓ OT Enabled' : '+ OT';
+    btn.textContent = otEnabled ? '✓ Evening OT Enabled' : '+ Evening OT';
     fields.style.display = otEnabled ? 'flex' : 'none';
+  }
+  function updateMorningOtToggleUI(){
+    const btn = document.getElementById('morningOtToggleBtn');
+    const fields = document.getElementById('morningOtFields');
+    btn.classList.toggle('active', morningOtEnabled);
+    btn.textContent = morningOtEnabled ? '✓ Morning OT Enabled' : '+ Morning OT';
+    fields.style.display = morningOtEnabled ? 'flex' : 'none';
   }
   document.getElementById('statusToggle').addEventListener('click', (e)=>{
     const btn = e.target.closest('button');
@@ -1050,19 +1247,25 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     updateOtToggleUI();
     updateComputedBox();
   });
-  ['timeIn','timeOut','holidaySelect','otTimeOut'].forEach(id=>{
+  document.getElementById('morningOtToggleBtn').addEventListener('click', ()=>{
+    morningOtEnabled = !morningOtEnabled;
+    updateMorningOtToggleUI();
+    updateComputedBox();
+  });
+  ['timeIn','timeOut','holidaySelect','otTimeOut','morningOtStart'].forEach(id=>{
     document.getElementById(id).addEventListener('input', updateComputedBox);
     document.getElementById(id).addEventListener('change', updateComputedBox);
   });
-  const LATE_CUTOFF_MINUTES = 10*60; // 10:00 AM
-
   function updateLateWarning(){
     const warnEl = document.getElementById('lateWarning');
     const timeInVal = document.getElementById('timeIn').value;
     const inM = timeToMinutes(timeInVal);
-    if(activeStatus==='present' && inM!==null && inM > LATE_CUTOFF_MINUTES){
+    const schedule = getSchedule(activeDate);
+    if(activeStatus==='present' && inM!==null && inM >= schedule.halfStart){
+      const hh = Math.floor(schedule.halfStart/60), mm = schedule.halfStart%60;
+      const label = (hh%12===0?12:hh%12)+':'+pad(mm)+' '+(hh<12?'AM':'PM');
       warnEl.style.display = 'flex';
-      warnEl.innerHTML = '⚠️ Time in is after 10:00 AM — this is usually marked as a Half Day. Switch it above if that applies.';
+      warnEl.innerHTML = '⚠️ Time in is at or after '+label+' — this is usually marked as a Half Day. Switch it above if that applies.';
     } else {
       warnEl.style.display = 'none';
       warnEl.innerHTML = '';
@@ -1078,28 +1281,37 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       timeIn: document.getElementById('timeIn').value,
       timeOut: document.getElementById('timeOut').value,
       otEnabled: otEnabled,
-      otTimeOut: document.getElementById('otTimeOut').value
+      otTimeOut: document.getElementById('otTimeOut').value,
+      morningOtEnabled: morningOtEnabled,
+      morningOtStart: document.getElementById('morningOtStart').value
     };
-    if(activeStatus==='none'){
+    if(activeStatus==='none' && tempDay.holiday==='none'){
       box.innerHTML = '<div>No entry — this day will be excluded from totals.</div>';
       return;
     }
     const r = computeDayPay(activeDate, tempDay);
+    const isManager = (settings.employeeClassification||'regular')==='manager';
     let html = '';
-    if(activeStatus==='present'){
-      html += '<div><span>Late minutes</span><span>'+Math.round(r.lateMinutes)+' min</span></div>';
-      if(r.lateDeduction>0) html += '<div><span>Late deduction</span><span>-'+fmtMoney(r.lateDeduction)+'</span></div>';
-      if(otEnabled) html += '<div><span>OT hours (after 5:00 PM)</span><span>'+r.otHours.toFixed(2)+'</span></div>';
+    if(r.holidayForfeitWarning){
+      html += '<div style="color:var(--rust);"><span>⚠️ Absent day before</span><span>holiday pay may be forfeited</span></div>';
+    }
+    if(activeStatus==='present' || activeStatus==='half'){
+      if(!isManager && r.lateMinutes>0) html += '<div><span>Late minutes</span><span>'+Math.round(r.lateMinutes)+' min</span></div>';
+      if(!isManager && r.lateDeduction>0) html += '<div><span>Late deduction</span><span>-'+fmtMoney(r.lateDeduction)+'</span></div>';
+      if((morningOtEnabled||otEnabled) && r.otHours>0){
+        html += '<div><span>Credited OT (rounded)</span><span>'+r.otHours.toFixed(2)+' hrs</span></div>';
+      }
+      if(isManager && r.offsetHours>0) html += '<div><span>Offset hours earned</span><span>'+r.offsetHours.toFixed(2)+'</span></div>';
       if(r.isSunday) html += '<div><span>Sunday premium</span><span>+'+settings.sundayPremiumPct+'%</span></div>';
     }
-    if(tempDay.holiday!=='none') html += '<div><span>Holiday multiplier</span><span>x'+(tempDay.holiday==='regular'?settings.regularHolidayMult:settings.specialHolidayMult)+'</span></div>';
+    if(tempDay.holiday!=='none') html += '<div><span>Holiday</span><span>'+(tempDay.holiday==='regular'?'Regular (+100%)':'Special (130% worked / no pay)')+'</span></div>';
     html += '<div><strong>Day pay (salary)</strong><strong>'+fmtMoney(r.pay)+'</strong></div>';
     if(r.allowance>0) html += '<div><span>+ Daily allowance</span><span>'+fmtMoney(r.allowance)+'</span></div>';
     box.innerHTML = html;
   }
   document.getElementById('cancelDay').addEventListener('click', closeDayModal);
   document.getElementById('saveDay').addEventListener('click', async ()=>{
-    if(activeStatus==='none'){
+    if(activeStatus==='none' && document.getElementById('holidaySelect').value==='none'){
       delete days[activeDate];
     }else{
       days[activeDate] = {
@@ -1109,13 +1321,15 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         timeOut: document.getElementById('timeOut').value,
         notes: document.getElementById('dayNotes').value,
         otEnabled: otEnabled,
-        otTimeOut: document.getElementById('otTimeOut').value
+        otTimeOut: document.getElementById('otTimeOut').value,
+        morningOtEnabled: morningOtEnabled,
+        morningOtStart: document.getElementById('morningOtStart').value
       };
     }
     closeDayModal();
     renderCalendar();
     try{ await persistDays(); }
-    catch(e){ toast('Could not save — check your connection', {error:true}); }
+    catch(e){ if(!/^blocked-save/.test(e.message)) toast('Could not save — check your connection', {error:true}); }
   });
 
   /* ---------- SETTINGS MODAL ---------- */
@@ -1159,7 +1373,43 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     }
   });
 
+  let draftCompressedWeeks = [];
+
+  function renderCompressedWeeksChips(){
+    const wrap = document.getElementById('compressedWeeksChips');
+    if(draftCompressedWeeks.length===0){
+      wrap.innerHTML = '<p class="note" style="margin:4px 0;">No compressed weeks toggled on.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    draftCompressedWeeks.slice().sort().forEach(monIso=>{
+      const chip = document.createElement('div');
+      chip.className = 'ded-item';
+      const mon = parseISO(monIso);
+      const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+6);
+      chip.innerHTML = '<input type="text" readonly value="Week of '+monIso+' \u2192 '+toISO(sun)+'" style="flex:2;">'+
+        '<button data-mon="'+monIso+'" data-act="removeWeek">×</button>';
+      wrap.appendChild(chip);
+    });
+  }
+  document.getElementById('toggleCompressedWeekBtn').addEventListener('click', ()=>{
+    const picked = document.getElementById('compressedWeekPicker').value;
+    if(!picked){ toast('Pick a date first', {error:true}); return; }
+    const mon = mondayOfWeek(picked);
+    const idx = draftCompressedWeeks.indexOf(mon);
+    if(idx===-1) draftCompressedWeeks.push(mon); else draftCompressedWeeks.splice(idx,1);
+    renderCompressedWeeksChips();
+  });
+  document.getElementById('compressedWeeksChips').addEventListener('click', (e)=>{
+    if(e.target.dataset.act==='removeWeek'){
+      const idx = draftCompressedWeeks.indexOf(e.target.dataset.mon);
+      if(idx>-1) draftCompressedWeeks.splice(idx,1);
+      renderCompressedWeeksChips();
+    }
+  });
+
   function openSettingsModal(){
+    document.getElementById('setClassification').value = settings.employeeClassification || 'regular';
     document.getElementById('setRate').value = settings.regularRate;
     document.getElementById('setSunday').value = settings.sundayPremiumPct;
     document.getElementById('setOT').value = settings.otMultiplier;
@@ -1167,6 +1417,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('setHolSpec').value = settings.specialHolidayMult;
     document.getElementById('setLunch').value = settings.lunchMinutes;
     document.getElementById('setAllowance').value = settings.dailyAllowance;
+    document.getElementById('compressedWeekPicker').value = toISO(today);
+    draftCompressedWeeks = getCompressedWeeks();
+    renderCompressedWeeksChips();
     draftPermDed = JSON.parse(JSON.stringify(permanentDeductions));
     renderPermDedList();
     document.getElementById('settingsOverlay').classList.add('show');
@@ -1176,6 +1429,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('settingsOverlay').classList.remove('show');
   });
   document.getElementById('saveSettings').addEventListener('click', async ()=>{
+    settings.employeeClassification = document.getElementById('setClassification').value;
     settings.regularRate = parseFloat(document.getElementById('setRate').value)||695;
     settings.sundayPremiumPct = parseFloat(document.getElementById('setSunday').value)||0;
     settings.otMultiplier = parseFloat(document.getElementById('setOT').value)||0;
@@ -1183,11 +1437,12 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     settings.specialHolidayMult = parseFloat(document.getElementById('setHolSpec').value)||1;
     settings.lunchMinutes = parseFloat(document.getElementById('setLunch').value)||0;
     settings.dailyAllowance = parseFloat(document.getElementById('setAllowance').value)||0;
+    settings.compressedWeeksJSON = JSON.stringify(draftCompressedWeeks);
     permanentDeductions = JSON.parse(JSON.stringify(draftPermDed));
     document.getElementById('settingsOverlay').classList.remove('show');
     renderCalendar();
     try{ await persistSettings(); await persistPermanentDeductions(); }
-    catch(e){ toast('Could not save — check your connection', {error:true}); }
+    catch(e){ if(!/^blocked-save/.test(e.message)) toast('Could not save — check your connection', {error:true}); }
   });
 
   /* ---------- PERIOD SUMMARY ---------- */
@@ -1218,6 +1473,23 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('s_gross').textContent = fmtMoney(currentSummary.gross);
     document.getElementById('s_late').textContent = fmtMoney(currentSummary.lateDeductionTotal);
     document.getElementById('s_allowance').textContent = fmtMoney(currentSummary.allowanceTotal);
+
+    const isManager = (settings.employeeClassification||'regular')==='manager';
+    const offsetRow = document.getElementById('s_offsetRow');
+    if(isManager && currentSummary.offsetHoursTotal>0){
+      offsetRow.style.display = 'flex';
+      document.getElementById('s_offset').textContent = currentSummary.offsetHoursTotal.toFixed(1)+' hrs';
+    } else {
+      offsetRow.style.display = 'none';
+    }
+
+    const warnBox = document.getElementById('s_forfeitWarning');
+    if(currentSummary.forfeitWarningDates && currentSummary.forfeitWarningDates.length){
+      warnBox.style.display = 'flex';
+      warnBox.innerHTML = '⚠️ Possible holiday-pay forfeiture (absent the day before): '+currentSummary.forfeitWarningDates.join(', ')+'. This wasn\'t auto-deducted — review and adjust manually if it applies.';
+    } else {
+      warnBox.style.display = 'none';
+    }
     renderNet();
   }
 
@@ -1326,7 +1598,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     if(btn.dataset.act==='del'){
       periods = periods.filter(p=>p.id!==id);
       renderHistory();
-      try{ await persistPeriods(); }catch(e){ toast('Could not save — check your connection', {error:true}); }
+      try{ await persistPeriods(); }catch(e){ if(!/^blocked-save/.test(e.message)) toast('Could not save — check your connection', {error:true}); }
     } else if(btn.dataset.act==='load'){
       const p = periods.find(p=>p.id===id);
       if(!p) return;
@@ -1401,7 +1673,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       google.accounts.oauth2.revoke(accessToken, ()=>{});
     }
     accessToken = null; tokenExpiresAt = 0; currentUser = null; spreadsheetId = null;
-    days = {}; periods = []; draftDed = []; permanentDeductions = []; currentSummary = null; highlightRange = null;
+    days = {}; periods = []; draftDed = []; permanentDeductions = []; currentSummary = null; highlightRange = null; dataLoaded = false;
     document.getElementById('summaryWrap').style.display = 'none';
     showGate('');
   });
