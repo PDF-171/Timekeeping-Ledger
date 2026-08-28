@@ -516,7 +516,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         <input type="number" id="setAllowance" step="0.01">
       </div>
     </div>
-    <p class="note">OT multiplier 1.25 = 125% of your hourly rate (company standard). OT under 1 full hour doesn't count; once you hit 1 hour, credited OT rounds down to the nearest 30 minutes. Half Day pay is now proportional to actual hours worked, up to 8, before OT can begin. The daily allowance is separate from salary/OT and pays on any Present, Half Day, or worked-Holiday day.</p>
+    <p class="note">OT multiplier 1.25 = 125% of your hourly rate (company standard). OT under 1 full hour doesn't count; once you hit 1 hour, credited OT rounds down to the nearest 30 minutes. Half Day pay is now proportional to actual hours worked, up to 8, before OT can begin. The daily allowance defaults to ₱0 — set your own amount below. It's separate from salary/OT and pays on any Present or Half Day, plus Regular Holidays you didn't work (since those still pay 100% by default).</p>
 
     <hr class="divider">
     <h3 style="margin-bottom:6px;">Compressed Weeks</h3>
@@ -565,7 +565,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     regularHolidayMult: 2.0,
     specialHolidayMult: 1.30,
     lunchMinutes: 60,
-    dailyAllowance: 35,
+    dailyAllowance: 0,
     employeeClassification: 'regular',   // 'regular' | 'nine_six' | 'manager'
     compressedWeeksJSON: '[]'            // JSON array of Monday-ISO-dates flagged as compressed weeks
   };
@@ -743,7 +743,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
 
     // --- Regular Holiday, not worked: 100% by default if qualified (Section 20.1) ---
     if(holiday==='regular' && status!=='present'){
-      return {status, holiday, isSunday, pay:Math.round(settings.regularRate*100)/100, allowance:0,
+      return {status, holiday, isSunday, pay:Math.round(settings.regularRate*100)/100, allowance:(settings.dailyAllowance||0),
         lateMinutes:0, lateDeduction:0, otHours:0, offsetHours:0, regHours:0,
         holidayForfeitWarning, hoursWorked:0};
     }
