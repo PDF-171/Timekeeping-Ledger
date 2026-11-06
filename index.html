@@ -836,6 +836,17 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     });
   }
 
+  let lastAuthError = '';
+  function describeAuthError(){
+    switch(lastAuthError){
+      case 'popup_failed_to_open': return 'Your browser blocked the Google sign-in popup. Allow popups for this site, or open the page in Chrome/Safari directly (not inside another app\'s built-in browser), then try again.';
+      case 'popup_closed': return 'The Google sign-in window was closed before finishing. If you saw an "Access blocked" or "app not verified" message, make sure this Gmail is listed under Test users in your Google Cloud OAuth consent screen.';
+      case 'access_denied': return 'Google access was denied. Please tick all the permission checkboxes (Drive file access) when signing in.';
+      case 'invalid_request': case 'redirect_uri_mismatch': case 'origin_mismatch': return 'Google rejected the request (' + lastAuthError + '). Check that your site URL is listed under Authorized JavaScript origins in your OAuth Client settings.';
+      default: return 'Sign-in was cancelled or blocked' + (lastAuthError ? ' (' + lastAuthError + ')' : '') + '. Please try again.';
+    }
+  }
+
   function requestToken(promptMode){
     return new Promise((resolve) => {
       ensureTokenClient();
@@ -846,14 +857,17 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         if(resp && resp.access_token){
           accessToken = resp.access_token;
           tokenExpiresAt = Date.now() + ((resp.expires_in||3600)*1000) - 30000;
+          lastAuthError = '';
           resolve(true);
         } else {
+          lastAuthError = (resp && resp.error) || 'no_token';
           resolve(false);
         }
       };
-      tokenClient.error_callback = () => {
+      tokenClient.error_callback = (err) => {
         if(settled) return;
         settled = true;
+        lastAuthError = (err && err.type) || 'unknown';
         resolve(false);
       };
       try{
@@ -1657,7 +1671,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     document.getElementById('gateStatus').textContent = 'Opening Google sign-in…';
     const ok = await requestToken('consent');
     if(!ok){
-      document.getElementById('gateStatus').textContent = 'Sign-in was cancelled or blocked. Please try again.';
+      document.getElementById('gateStatus').textContent = describeAuthError();
       return;
     }
     try{
