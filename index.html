@@ -301,7 +301,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.4 0-13.8 4.2-17 10.3z"/><path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.5l-6.5-5.5C29.4 34.9 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.2 39.7 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.5 5.5C41.6 36.2 44 30.5 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
       Sign in with Google
     </button>
+    <button class="btn btn-outline btn-block" id="signInRedirectBtn" style="margin-top:12px;font-size:12.5px;">Popup not working? Sign in using full page</button>
     <div class="gate-status" id="gateStatus"></div>
+    <div class="gate-status" style="font-size:10.5px;opacity:0.6;">version 3.3</div>
   </div>
 </div>
 
@@ -837,10 +839,12 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   }
 
   let lastAuthError = '';
+  let authSeq = 0; // each request gets an id; stale popups/callbacks from older requests are ignored
   function describeAuthError(){
     switch(lastAuthError){
       case 'popup_failed_to_open': return 'Your browser blocked the Google sign-in popup. Allow popups for this site, or open the page in Chrome/Safari directly (not inside another app\'s built-in browser), then try again.';
       case 'popup_closed': return 'The Google sign-in window was closed before finishing. If you saw an "Access blocked" or "app not verified" message, make sure this Gmail is listed under Test users in your Google Cloud OAuth consent screen.';
+      case 'state_mismatch': return 'Sign-in could not be verified. Please try again.';
       case 'access_denied': return 'Google access was denied. Please tick all the permission checkboxes (Drive file access) when signing in.';
       case 'invalid_request': case 'redirect_uri_mismatch': case 'origin_mismatch': return 'Google rejected the request (' + lastAuthError + '). Check that your site URL is listed under Authorized JavaScript origins in your OAuth Client settings.';
       default: return 'Sign-in was cancelled or blocked' + (lastAuthError ? ' (' + lastAuthError + ')' : '') + '. Please try again.';
@@ -851,8 +855,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     return new Promise((resolve) => {
       ensureTokenClient();
       let settled = false;
+      const mySeq = ++authSeq;
       tokenClient.callback = (resp) => {
-        if(settled) return;
+        if(settled || mySeq!==authSeq) return;
         settled = true;
         if(resp && resp.access_token){
           accessToken = resp.access_token;
@@ -865,7 +870,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
         }
       };
       tokenClient.error_callback = (err) => {
-        if(settled) return;
+        if(settled || mySeq!==authSeq) return;
         settled = true;
         lastAuthError = (err && err.type) || 'unknown';
         resolve(false);
@@ -1669,11 +1674,14 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
 
   document.getElementById('signInBtn').addEventListener('click', async ()=>{
     document.getElementById('gateStatus').textContent = 'Opening Google sign-in…';
-    const ok = await requestToken('consent');
+    let returning = false;
+    try{ returning = localStorage.getItem('tk_signed_in_before')==='1'; }catch(e){}
+    const ok = await requestToken(returning ? '' : 'consent');
     if(!ok){
       document.getElementById('gateStatus').textContent = describeAuthError();
       return;
     }
+    try{ localStorage.setItem('tk_signed_in_before','1'); }catch(e){}
     try{
       await completeSignIn();
     }catch(e){
@@ -1692,6 +1700,41 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     showGate('');
   });
 
+  /* ---------- FULL-PAGE (REDIRECT) SIGN-IN FALLBACK ---------- */
+  function redirectUri(){ return location.origin + location.pathname; }
+  function startRedirectSignIn(){
+    const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try{ sessionStorage.setItem('tk_oauth_state', state); }catch(e){}
+    let returning = false;
+    try{ returning = localStorage.getItem('tk_signed_in_before')==='1'; }catch(e){}
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri(),
+      response_type: 'token',
+      scope: SCOPES,
+      include_granted_scopes: 'true',
+      state: state,
+      prompt: returning ? 'select_account' : 'consent'
+    });
+    location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+  }
+  // Returns true if we just came back from Google with a token in the URL hash.
+  function consumeRedirectToken(){
+    const h = location.hash || '';
+    if(h.indexOf('access_token=')===-1 && h.indexOf('error=')===-1) return null;
+    const p = new URLSearchParams(h.replace(/^#/, ''));
+    history.replaceState(null, '', location.pathname + location.search); // remove token from the address bar
+    let expected = null;
+    try{ expected = sessionStorage.getItem('tk_oauth_state'); sessionStorage.removeItem('tk_oauth_state'); }catch(e){}
+    if(p.get('error')){ lastAuthError = p.get('error'); return {ok:false}; }
+    if(!expected || p.get('state')!==expected){ lastAuthError = 'state_mismatch'; return {ok:false}; }
+    accessToken = p.get('access_token');
+    tokenExpiresAt = Date.now() + ((parseInt(p.get('expires_in'),10)||3600)*1000) - 30000;
+    try{ localStorage.setItem('tk_signed_in_before','1'); }catch(e){}
+    return {ok:true};
+  }
+  document.getElementById('signInRedirectBtn').addEventListener('click', startRedirectSignIn);
+
   /* ---------- INIT ---------- */
   window.addEventListener('load', async ()=>{
     if(!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.indexOf('YOUR_CLIENT_ID')===0){
@@ -1709,15 +1752,20 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       return;
     }
     ensureTokenClient();
-    // try silent sign-in for returning users
-    document.getElementById('gateStatus').textContent = 'Checking for an existing session…';
-    const ok = await requestToken('');
-    if(ok){
-      try{ await completeSignIn(); }
-      catch(e){ console.error(e); showGate('Please sign in to continue.'); }
-    }else{
-      showGate('');
+    const back = consumeRedirectToken();
+    if(back){
+      if(back.ok){
+        document.getElementById('gateStatus').textContent = 'Loading your data…';
+        try{ await completeSignIn(); }
+        catch(e){ console.error(e); showGate('Something went wrong loading your data. Please try again.'); }
+      } else {
+        showGate(describeAuthError());
+      }
+      return;
     }
+    // No automatic sign-in attempt on load: browsers block popups that aren't started by a tap,
+    // and the blocked request used to linger and break the real sign-in. The user taps the button instead.
+    showGate('');
   });
 
 })();
