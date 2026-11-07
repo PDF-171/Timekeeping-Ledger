@@ -301,9 +301,8 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.6-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4c-7.4 0-13.8 4.2-17 10.3z"/><path fill="#4CAF50" d="M24 44c5.4 0 10.3-2.1 14-5.5l-6.5-5.5C29.4 34.9 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.6 5.1C9.2 39.7 16 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l6.5 5.5C41.6 36.2 44 30.5 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
       Sign in with Google
     </button>
-    <button class="btn btn-outline btn-block" id="signInRedirectBtn" style="margin-top:12px;font-size:12.5px;">Popup not working? Sign in using full page</button>
     <div class="gate-status" id="gateStatus"></div>
-    <div class="gate-status" style="font-size:10.5px;opacity:0.6;">version 3.3</div>
+    <div class="gate-status" style="font-size:10.5px;opacity:0.6;">version 3.5</div>
   </div>
 </div>
 
@@ -888,13 +887,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
 
   async function ensureValidToken(){
     if(accessToken && Date.now() < tokenExpiresAt) return true;
-    const ok = await requestToken('');
-    if(ok) return true;
-    toast('Session expired — tap to sign in again', {error:true, sticky:true, clickable:true, onClick: async ()=>{
-      hideToast();
-      const ok2 = await requestToken('consent');
-      if(ok2){ toast('Signed in'); }
-    }});
+    toast('Session expired — tap here to sign in again', {error:true, sticky:true, clickable:true, onClick: ()=>{ startRedirectSignIn(); }});
     return false;
   }
 
@@ -1672,22 +1665,9 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     showApp();
   }
 
-  document.getElementById('signInBtn').addEventListener('click', async ()=>{
+  document.getElementById('signInBtn').addEventListener('click', ()=>{
     document.getElementById('gateStatus').textContent = 'Opening Google sign-in…';
-    let returning = false;
-    try{ returning = localStorage.getItem('tk_signed_in_before')==='1'; }catch(e){}
-    const ok = await requestToken(returning ? '' : 'consent');
-    if(!ok){
-      document.getElementById('gateStatus').textContent = describeAuthError();
-      return;
-    }
-    try{ localStorage.setItem('tk_signed_in_before','1'); }catch(e){}
-    try{
-      await completeSignIn();
-    }catch(e){
-      console.error(e);
-      document.getElementById('gateStatus').textContent = 'Something went wrong loading your data. Please try again.';
-    }
+    startRedirectSignIn();
   });
 
   document.getElementById('signOutBtn').addEventListener('click', ()=>{
@@ -1701,7 +1681,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
   });
 
   /* ---------- FULL-PAGE (REDIRECT) SIGN-IN FALLBACK ---------- */
-  function redirectUri(){ return location.origin + location.pathname; }
+  // Always send the clean folder address (…/Timekeeping-Ledger/) no matter how the page was opened
+  // (with or without index.html, with or without the trailing slash), so it matches the registered URI.
+  function redirectUri(){
+    let path = location.pathname.replace(/index\.html$/i, '');
+    if(path.slice(-1)!=='/') path += '/';
+    return location.origin + path;
+  }
   function startRedirectSignIn(){
     const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
     try{ sessionStorage.setItem('tk_oauth_state', state); }catch(e){}
@@ -1733,7 +1719,6 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     try{ localStorage.setItem('tk_signed_in_before','1'); }catch(e){}
     return {ok:true};
   }
-  document.getElementById('signInRedirectBtn').addEventListener('click', startRedirectSignIn);
 
   /* ---------- INIT ---------- */
   window.addEventListener('load', async ()=>{
