@@ -302,7 +302,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
       Sign in with Google
     </button>
     <div class="gate-status" id="gateStatus"></div>
-    <div class="gate-status" style="font-size:10.5px;opacity:0.6;">version 3.5</div>
+    <div class="gate-status" style="font-size:10.5px;opacity:0.6;">version 3.6</div>
   </div>
 </div>
 
@@ -843,6 +843,7 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     switch(lastAuthError){
       case 'popup_failed_to_open': return 'Your browser blocked the Google sign-in popup. Allow popups for this site, or open the page in Chrome/Safari directly (not inside another app\'s built-in browser), then try again.';
       case 'popup_closed': return 'The Google sign-in window was closed before finishing. If you saw an "Access blocked" or "app not verified" message, make sure this Gmail is listed under Test users in your Google Cloud OAuth consent screen.';
+      case 'missing_scope': return 'Google did not give this app access to your Drive. Tap Sign in again and, on the permission screen, tick the checkbox for Google Drive (see/edit files this app creates) before pressing Continue.';
       case 'state_mismatch': return 'Sign-in could not be verified. Please try again.';
       case 'access_denied': return 'Google access was denied. Please tick all the permission checkboxes (Drive file access) when signing in.';
       case 'invalid_request': case 'redirect_uri_mismatch': case 'origin_mismatch': return 'Google rejected the request (' + lastAuthError + '). Check that your site URL is listed under Authorized JavaScript origins in your OAuth Client settings.';
@@ -1714,6 +1715,13 @@ textarea{font-family:'Inter',sans-serif;resize:vertical;min-height:50px;}
     try{ expected = sessionStorage.getItem('tk_oauth_state'); sessionStorage.removeItem('tk_oauth_state'); }catch(e){}
     if(p.get('error')){ lastAuthError = p.get('error'); return {ok:false}; }
     if(!expected || p.get('state')!==expected){ lastAuthError = 'state_mismatch'; return {ok:false}; }
+    const grantedScope = p.get('scope') || '';
+    if(grantedScope.indexOf('drive.file')===-1){
+      // Drive permission box was not ticked: force the full permission screen next time.
+      try{ localStorage.removeItem('tk_signed_in_before'); }catch(e){}
+      lastAuthError = 'missing_scope';
+      return {ok:false};
+    }
     accessToken = p.get('access_token');
     tokenExpiresAt = Date.now() + ((parseInt(p.get('expires_in'),10)||3600)*1000) - 30000;
     try{ localStorage.setItem('tk_signed_in_before','1'); }catch(e){}
